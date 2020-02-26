@@ -1,0 +1,2 @@
+HEADER_TRACER_PARENT = 'Elastic-Apm-Traceparent'
+HTTP_WITH_BODY = {"POST", "PUT", "PATCH", "DELETE"}
