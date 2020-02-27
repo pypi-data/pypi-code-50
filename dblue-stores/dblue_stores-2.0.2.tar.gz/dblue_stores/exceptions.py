@@ -1,0 +1,2 @@
+class DblueStoresException(Exception):
+    pass
