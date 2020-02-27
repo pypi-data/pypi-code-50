@@ -1,0 +1,1 @@
+from fractionlib import Fraction 
