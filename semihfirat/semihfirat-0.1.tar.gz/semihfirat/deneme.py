@@ -1,0 +1,2 @@
+def semih():
+    print("Semih")
