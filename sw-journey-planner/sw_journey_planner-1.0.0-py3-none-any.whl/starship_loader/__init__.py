@@ -1,0 +1,1 @@
+from src.sw_journey_planner.starship_loader.swapi import load_starships
