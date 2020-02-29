@@ -1,0 +1,2 @@
+class hazelpy:
+    name="Hazelpy"
