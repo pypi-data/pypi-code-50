@@ -1,0 +1,18 @@
+from setuptools import setup
+
+setup(
+    name = "PyMQL5",
+    version = "1.2.1",
+    author = "Maicon D Baggio",
+    author_email = "maionbaggio@outlook.com",
+    description = ("O PyMQL5 a uma API que realiza a conexao entre Python3 e o Metatrader5 atraves de socket UDP"),
+    license = "MIT",
+    url = "https://github.com/MaiconBaggio/PyMQL5",
+    classifiers=[
+        'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
+        'Natural Language :: Portuguese (Brazilian)',
+        'Programming Language :: Python :: 3',
+    ],
+    packages=['PyMQL5'],
+)
