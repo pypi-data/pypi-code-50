@@ -1,0 +1,7 @@
+__title__ = "mythos-db"
+__version__ = "0.0.3"
+__description__ = "Mythos DB"
+__author__ = "Jaroslaw Wojtas"
+__license__ = "Apache 2.0"
+__copyright__ = "Copyright 2020 Jaroslaw Wojtas"
+__url__ = "https://github.com/theyarek/mythos-db"
