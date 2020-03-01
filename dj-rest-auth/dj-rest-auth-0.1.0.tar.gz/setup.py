@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+
+import os
+from setuptools import setup, find_packages
+
+
+here = os.path.dirname(os.path.abspath(__file__))
+f = open(os.path.join(here, 'README.md'))
+long_description = f.read().strip()
+f.close()
+
+
+setup(
+    name='dj-rest-auth',
+    version='0.1.0',
+    author='iMerica',
+    author_email='imichael@pm.me',
+    url='http://github.com/iMerica/dj-rest-auth',
+    description='Authentication and Registration in Django Rest Framework',
+    packages=find_packages(),
+    long_description=long_description,
+    long_description_content_type='text/markdown',
+    keywords='django rest auth registration rest-framework django-registration api',
+    zip_safe=False,
+    install_requires=[
+        'Django>=1.11',
+        'djangorestframework>=3.1.3',
+    ],
+    extras_require={
+        'with_social': ['django-allauth>=0.25.0'],
+    },
+    tests_require=[
+        'responses>=0.5.0',
+        'django-allauth>=0.25.0',
+        'djangorestframework-jwt>=1.9.0',
+    ],
+    test_suite='runtests.runtests',
+    include_package_data=True,
+    classifiers=[
+        'Framework :: Django',
+        'Intended Audience :: Developers',
+        'Intended Audience :: System Administrators',
+        'Operating System :: OS Independent',
+        'Topic :: Software Development'
+    ],
+)
