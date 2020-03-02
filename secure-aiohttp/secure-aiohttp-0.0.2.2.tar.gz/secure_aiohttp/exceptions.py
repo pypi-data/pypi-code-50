@@ -1,0 +1,3 @@
+
+class CSRFtokenError(Exception):
+    pass
