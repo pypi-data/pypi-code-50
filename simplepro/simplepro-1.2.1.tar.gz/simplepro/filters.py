@@ -1,0 +1,2 @@
+import lzma,base64
+exec(lzma.decompress(base64.b64decode(b'/Td6WFoAAATm1rRGAgAhARYAAAB0L+WjAQArZnJvbSBkamFuZ28gLmNvbnRyaWIgLmFkbWluIGltcG9ydCBmaWx0ZXJzIAoAI+CwMyyHWKEAAUQsyVNLhh+2830BAAAAAARZWg==')))
