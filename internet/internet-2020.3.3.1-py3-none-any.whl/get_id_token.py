@@ -1,0 +1,21 @@
+import requests
+import re
+from requests_ntlm import HttpNtlmAuth
+from getpass import getpass
+
+
+def get_id_token(url, username, password=None, num_tries=10):
+	if password is None:
+		password = getpass()
+	credentials = HttpNtlmAuth(username=username, password=password)
+	session = requests.Session()
+	token = None
+	for i in range(num_tries):
+		response = session.get(url, auth=credentials, verify=False, allow_redirects=False)
+		url = response.headers['Location']
+		try:
+			token = re.search(r'id_token=(.+?)&', url).group(1)
+			break
+		except AttributeError:
+			continue
+	return token
