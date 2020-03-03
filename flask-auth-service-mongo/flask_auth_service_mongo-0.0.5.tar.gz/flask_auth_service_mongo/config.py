@@ -1,0 +1,11 @@
+""" Default config.py file"""
+import os
+
+WHITE_LIST_TOKEN = os.environ.get('WHITE_LIST_TOKEN', True)
+SECRET_KEY = os.environ.get('SECRET_KEY', 'not-secret')
+USERNAME_MIN_LENGTH = os.environ.get('USERNAME_MIN_LENGTH', 3)
+PASSWORD_MIN_LENGTH = os.environ.get('PASSWORD_MIN_LENGTH', 3)
+
+# DEFAULT ADMIN USER
+DEFAULT_USER_ADMIN_USERNAME = os.environ.get('DEFAULT_USER_ADMIN_USERNAME')
+DEFAULT_USER_ADMIN_PASSWORD = os.environ.get('DEFAULT_USER_ADMIN_PASSWORD')
