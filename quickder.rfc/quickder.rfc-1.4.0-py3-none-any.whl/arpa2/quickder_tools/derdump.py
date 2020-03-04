@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+
+import sys
+
+import optparse
+
+def import_colour (fatal=False):
+	global fg, bg, attr, default_colour
+	default_colour = True
+	try:
+		import colored
+		fg   = colored.fg
+		bg   = colored.bg
+		attr = colored.attr
+	except:
+		if fatal:
+			raise
+		attr = lambda _col: ''
+		fg = attr
+		bg = attr
+		default_colour = False
+
+
+class2str = {
+	0: 'Universal',
+	1: 'Application',
+	2: 'Contextual',
+	3: 'Private'
+}
+
+pc2str = {
+	0: 'Primitive',
+	1: 'Constructed'
+}
+
+universal2str = {
+	0: 'End-Of-Content',
+	1: 'BOOLEAN',
+	2: 'INTEGER',
+	3: 'BITSTRING',
+	4: 'OCTETSTRING',
+	5: 'NULL',
+	6: 'OID',
+	7: 'Object-Descriptor',
+	8: 'EXTERNAL',
+	9: 'REAL',
+	10: 'ENUMERATED',
+	11: 'EMBEDDED PDV',
+	12: 'UTF8String',
+	13: 'RELATIVE-OID',
+	14: '*****',
+	15: '*****',
+	16: 'SEQUENCE (OF)',
+	17: 'SET (OF)',
+	18: 'NumericString',
+	19: 'PrintableString',
+	20: 'T61String',
+	21: 'VideotexString',
+	22: 'IA5String',
+	23: 'UTCTime',
+	24: 'GeneralizedTime',
+	25: 'GraphicString',
+	26: 'VisibleString',
+	27: 'GeneralString',
+	28: 'UniversalString',
+	29: 'CHARACTER STRING',
+	30: 'BMPString',
+	31: '*****'
+}
+
+
+def niceerror (s):
+	return bg ('yellow') + fg ('red') + s + attr (0)
+
+def nicemeaning (s):
+	return attr ('bold') + s + attr (0)
+
+def nicetag (ds):
+	if type (ds) == int:
+		ds = 'tag 0x%02x' % ds
+	return fg ('green') + ds + attr (0)
+
+def nicecontlen (ds, depth):
+	if type (ds) == int:
+		ds = str (ds)
+	return fg ('magenta') + '#' * depth + ds + attr (0)
+
+def nicetagofs (ds):
+	if type (ds) == int:
+		ds = str (ds)
+	return fg ('cyan') + '@' + ds + attr (0)
+
+def nicenesting (ad):
+	if type (ad) == type ([]):
+		ad = len (ad)
+	return fg ('light_blue') + '^' + str (ad) + attr (0)
+
+def niceclass (ds):
+	if type (ds) == int:
+		ds = class2str [ds]
+	return attr ('dim') + ds + attr (0)
+
+def niceprimconstr (ds):
+	if type (ds) == bool:
+		ds = int (ds)
+	if type (ds) == int:
+		ds = pc2str [ds]
+	return attr ('dim') + ds + attr (0)
+
+def eof ():
+	global ofs, der
+	return ofs >= len (der)
+
+def read1 ():
+	global ofs, der
+	if eof ():
+		print ('ATTEMPTED READ BEYOND EOF (RETURNING 0x00)')
+		return 0
+	else:
+		ofs = ofs + 1
+		return der [ofs-1]
+
+
+def main ():
+
+	global ofs, der
+
+	import_colour ()
+	opts = optparse.OptionParser ()
+	opts.add_option ('-c', '--colour', '--color',
+			action='store_true', default=default_colour, dest='colour',
+			help='Print colourful output (loads Python module "colored", page with "less -R")')
+	(options,args) = opts.parse_args ()
+	if options.colour:
+		import_colour (fatal=True)
+
+	if len (args) != 1:
+		print ('Usage:  ' + attr ('bold') + sys.argv [0] + ' [--colour] file.der' + attr (0))
+		print ('Output: ' + nicemeaning ('MEANING') + ': ' + nicetag ('TAG') + ' ' + nicecontlen ('CONTLEN', 3) + ' ' + nicetagofs ('TAGOFS') + ' ' + nicenesting ('NESTING') + ', ' + niceclass ('CLASS') + ', ' + niceprimconstr ('PRIMCONSTR'))
+		sys.exit (1)
+
+	der = open (args [0], 'rb').read (65537)
+	ofs = 0
+
+	nesting = []
+
+	while not eof ():
+
+		while nesting != [] and ofs >= nesting [-1]:
+			if ofs > nesting [-1]:
+				print ('READ OFFSET %d EXCEEDS ENCAPSULATION %d (RETURNING)' % (ofs, nesting [-1]))
+			ofs = nesting.pop ()
+
+		tag = read1 ()
+		tag_class = (tag & 0xc0) >> 6
+		tag_pc = (tag & 0x20) != 0
+		tag_num = tag & 0x1f
+
+		lenlen = read1 ()
+		if lenlen & 0x80 == 0:
+			leng = lenlen
+			lenlen = 1
+		else:
+			lenlen = lenlen - 0x80 + 1
+			leng = 0
+			i = 1
+			while i < lenlen:
+				leng <<= 8
+				leng = leng + read1 ()
+				i = i + 1
+
+		if tag_class == 0:
+			meaning = universal2str [tag_num]
+		elif tag_class == 1:
+			meaning = '[APPLICATION ' + str (tag_num) + ']'
+		elif tag_class == 2:
+			meaning = '[' + str (tag_num) + ']'
+		else:
+			meaning = '[PRIVATE ' + str (tag_num) + ']'
+
+		sys.stdout.write ('%s%s: %s %s %s %s, %s, %s\n' % (
+				'  ' * len (nesting),
+				nicemeaning (meaning), nicetag (tag),
+				nicecontlen (leng, lenlen),
+				nicetagofs (ofs - lenlen - 1),
+				nicenesting (nesting),
+				niceclass (tag_class),
+				niceprimconstr (tag_pc) ) )
+
+		if tag_pc == 0 and leng > 0:
+			sys.stdout.write ('  ' * ( len (nesting) + 1 ))
+			cstr = ''
+			ival = None
+			ostr = ''
+			oval = None
+			bseq = []
+			bval = -8
+			while leng > 0:
+				ch = read1 ()
+				sys.stdout.write ('%02x' % ch)
+				if 32 <= ch < 127:
+					cstr = cstr + chr (ch)
+				else:
+					cstr = cstr + '.'
+				if ival is None:
+					ival = -1 if ch >= 128 else 0
+				ival = (ival << 8) | ch
+				if oval is None:
+					ostr = str (ch // 40) + '.' + str (ch % 40)
+					oval = 0
+				else:
+					oval = (oval << 7) | (ch & 0x7f)
+					if ch & 0x80 == 0:
+						ostr = ostr + '.' + str (oval)
+						oval = 0
+				for b in range (8):
+					if ((ch << b) & 0x80) == 0x80:
+						bseq.append (bval + b)
+				bval += 8
+				leng = leng - 1
+			if tag == 0x01:
+				cstr = attr ('bold') + ('TRUE' if ival != 0 else 'FALSE') + attr (0)
+			elif tag == 0x06:
+				cstr = attr ('bold') + ostr + attr (0)
+			elif tag in [0x02,0x0a]:
+				cstr = attr ('bold') + str (ival) + attr (0)
+			elif tag == 0x03:
+				if len (bseq) <= 32:
+					cstr = '{' + ','.join (
+						[ attr ('bold') + str (b) + attr (0)
+						  for b in bseq
+						  if b >= 0
+						]) + '}'
+				else:
+					cstr = None
+			else:
+				cstr = '"' + attr ('bold') + cstr + attr (0) + '"'
+			if cstr is not None:
+				sys.stdout.write ('==%s\n' % cstr)
+			else:
+				sys.stdout.write ('\n')
+
+		if tag_pc != 0:
+			# print ('Now at', ofs, 'adding', leng, 'pushing', ofs + leng)
+			nesting.append (ofs + leng)
+
+	while nesting != []:
+		if ofs != nesting [-1]:
+			print (niceerror ('NESTING NOT ENDED CORRECTLY, OFFSET IS %d INSTEAD OF %d (CONTINUING)' % (ofs, nesting [-1])))
+		nesting.pop ()
+
