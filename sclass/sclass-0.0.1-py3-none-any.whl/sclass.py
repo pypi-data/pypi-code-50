@@ -1,0 +1,3 @@
+
+class sclass:
+    pass
