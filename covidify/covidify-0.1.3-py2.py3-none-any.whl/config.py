@@ -1,0 +1,1 @@
+SCRIPT = '/pipeline.sh'
