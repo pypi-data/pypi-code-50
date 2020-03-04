@@ -1,0 +1,1 @@
+from .core import famous_text
