@@ -1,0 +1,1 @@
+default_app_config = "dworm.middle.apps.MiddleConfig"
