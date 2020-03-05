@@ -1,0 +1,109 @@
+﻿'''_5744.py
+
+VirtualComponentDynamicAnalysis
+'''
+
+
+from mastapy.system_model.part_model import (
+    _1942, _1928, _1929, _1936,
+    _1937, _1941
+)
+from mastapy._internal import constructor
+from mastapy._internal.cast_exception import CastException
+from mastapy.system_model.analyses_and_results.dynamic_analyses import _5704
+from mastapy._internal.python_net import python_net_import
+
+_VIRTUAL_COMPONENT_DYNAMIC_ANALYSIS = python_net_import('SMT.MastaAPI.SystemModel.AnalysesAndResults.DynamicAnalyses', 'VirtualComponentDynamicAnalysis')
+
+
+__docformat__ = 'restructuredtext en'
+__all__ = ('VirtualComponentDynamicAnalysis',)
+
+
+class VirtualComponentDynamicAnalysis(_5704.MountableComponentDynamicAnalysis):
+    '''VirtualComponentDynamicAnalysis
+
+    This is a mastapy class.
+    '''
+
+    TYPE = _VIRTUAL_COMPONENT_DYNAMIC_ANALYSIS
+
+    __hash__ = None
+
+    def __init__(self, instance_to_wrap: 'VirtualComponentDynamicAnalysis.TYPE'):
+        super().__init__(instance_to_wrap)
+
+    @property
+    def component_design(self) -> '_1942.VirtualComponent':
+        '''VirtualComponent: 'ComponentDesign' is the original name of this property.
+
+        Note:
+            This property is readonly.
+        '''
+
+        return constructor.new(_1942.VirtualComponent)(self.wrapped.ComponentDesign) if self.wrapped.ComponentDesign else None
+
+    @property
+    def component_design_of_type_mass_disc(self) -> '_1928.MassDisc':
+        '''MassDisc: 'ComponentDesign' is the original name of this property.
+
+        Note:
+            This property is readonly.
+        '''
+
+        if _1928.MassDisc.TYPE not in self.wrapped.ComponentDesign.__class__.__mro__:
+            raise CastException('Failed to cast component_design to MassDisc. Expected: {}.'.format(self.wrapped.ComponentDesign.__class__.__qualname__))
+
+        return constructor.new(_1928.MassDisc)(self.wrapped.ComponentDesign) if self.wrapped.ComponentDesign else None
+
+    @property
+    def component_design_of_type_measurement_component(self) -> '_1929.MeasurementComponent':
+        '''MeasurementComponent: 'ComponentDesign' is the original name of this property.
+
+        Note:
+            This property is readonly.
+        '''
+
+        if _1929.MeasurementComponent.TYPE not in self.wrapped.ComponentDesign.__class__.__mro__:
+            raise CastException('Failed to cast component_design to MeasurementComponent. Expected: {}.'.format(self.wrapped.ComponentDesign.__class__.__qualname__))
+
+        return constructor.new(_1929.MeasurementComponent)(self.wrapped.ComponentDesign) if self.wrapped.ComponentDesign else None
+
+    @property
+    def component_design_of_type_point_load(self) -> '_1936.PointLoad':
+        '''PointLoad: 'ComponentDesign' is the original name of this property.
+
+        Note:
+            This property is readonly.
+        '''
+
+        if _1936.PointLoad.TYPE not in self.wrapped.ComponentDesign.__class__.__mro__:
+            raise CastException('Failed to cast component_design to PointLoad. Expected: {}.'.format(self.wrapped.ComponentDesign.__class__.__qualname__))
+
+        return constructor.new(_1936.PointLoad)(self.wrapped.ComponentDesign) if self.wrapped.ComponentDesign else None
+
+    @property
+    def component_design_of_type_power_load(self) -> '_1937.PowerLoad':
+        '''PowerLoad: 'ComponentDesign' is the original name of this property.
+
+        Note:
+            This property is readonly.
+        '''
+
+        if _1937.PowerLoad.TYPE not in self.wrapped.ComponentDesign.__class__.__mro__:
+            raise CastException('Failed to cast component_design to PowerLoad. Expected: {}.'.format(self.wrapped.ComponentDesign.__class__.__qualname__))
+
+        return constructor.new(_1937.PowerLoad)(self.wrapped.ComponentDesign) if self.wrapped.ComponentDesign else None
+
+    @property
+    def component_design_of_type_unbalanced_mass(self) -> '_1941.UnbalancedMass':
+        '''UnbalancedMass: 'ComponentDesign' is the original name of this property.
+
+        Note:
+            This property is readonly.
+        '''
+
+        if _1941.UnbalancedMass.TYPE not in self.wrapped.ComponentDesign.__class__.__mro__:
+            raise CastException('Failed to cast component_design to UnbalancedMass. Expected: {}.'.format(self.wrapped.ComponentDesign.__class__.__qualname__))
+
+        return constructor.new(_1941.UnbalancedMass)(self.wrapped.ComponentDesign) if self.wrapped.ComponentDesign else None

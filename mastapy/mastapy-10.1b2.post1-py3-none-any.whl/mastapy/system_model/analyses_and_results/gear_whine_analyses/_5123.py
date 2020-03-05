@@ -1,0 +1,62 @@
+﻿'''_5123.py
+
+CoaxialConnectionGearWhineAnalysis
+'''
+
+
+from mastapy.system_model.connections_and_sockets import _1762
+from mastapy._internal import constructor
+from mastapy.system_model.analyses_and_results.static_loads import _5900
+from mastapy.system_model.analyses_and_results.system_deflections import _2150
+from mastapy.system_model.analyses_and_results.gear_whine_analyses import _5208
+from mastapy._internal.python_net import python_net_import
+
+_COAXIAL_CONNECTION_GEAR_WHINE_ANALYSIS = python_net_import('SMT.MastaAPI.SystemModel.AnalysesAndResults.GearWhineAnalyses', 'CoaxialConnectionGearWhineAnalysis')
+
+
+__docformat__ = 'restructuredtext en'
+__all__ = ('CoaxialConnectionGearWhineAnalysis',)
+
+
+class CoaxialConnectionGearWhineAnalysis(_5208.ShaftToMountableComponentConnectionGearWhineAnalysis):
+    '''CoaxialConnectionGearWhineAnalysis
+
+    This is a mastapy class.
+    '''
+
+    TYPE = _COAXIAL_CONNECTION_GEAR_WHINE_ANALYSIS
+
+    __hash__ = None
+
+    def __init__(self, instance_to_wrap: 'CoaxialConnectionGearWhineAnalysis.TYPE'):
+        super().__init__(instance_to_wrap)
+
+    @property
+    def connection_design(self) -> '_1762.CoaxialConnection':
+        '''CoaxialConnection: 'ConnectionDesign' is the original name of this property.
+
+        Note:
+            This property is readonly.
+        '''
+
+        return constructor.new(_1762.CoaxialConnection)(self.wrapped.ConnectionDesign) if self.wrapped.ConnectionDesign else None
+
+    @property
+    def connection_load_case(self) -> '_5900.CoaxialConnectionLoadCase':
+        '''CoaxialConnectionLoadCase: 'ConnectionLoadCase' is the original name of this property.
+
+        Note:
+            This property is readonly.
+        '''
+
+        return constructor.new(_5900.CoaxialConnectionLoadCase)(self.wrapped.ConnectionLoadCase) if self.wrapped.ConnectionLoadCase else None
+
+    @property
+    def system_deflection_results(self) -> '_2150.CoaxialConnectionSystemDeflection':
+        '''CoaxialConnectionSystemDeflection: 'SystemDeflectionResults' is the original name of this property.
+
+        Note:
+            This property is readonly.
+        '''
+
+        return constructor.new(_2150.CoaxialConnectionSystemDeflection)(self.wrapped.SystemDeflectionResults) if self.wrapped.SystemDeflectionResults else None

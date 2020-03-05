@@ -1,0 +1,29 @@
+﻿'''_2032.py
+
+ActiveImportedFESelectionGroup
+'''
+
+
+from mastapy.system_model.part_model.configurations import _2065, _2081
+from mastapy.system_model.part_model import _1928
+from mastapy.system_model.imported_fes import _104
+from mastapy._internal.python_net import python_net_import
+
+_ACTIVE_IMPORTED_FE_SELECTION_GROUP = python_net_import('SMT.MastaAPI.SystemModel.PartModel.Configurations', 'ActiveImportedFESelectionGroup')
+
+
+__docformat__ = 'restructuredtext en'
+__all__ = ('ActiveImportedFESelectionGroup',)
+
+
+class ActiveImportedFESelectionGroup(_2065.PartDetailConfiguration['_2081.ActiveImportedFESelection', '_1928.ImportedFEComponent', '_104.ImportedFE']):
+    '''ActiveImportedFESelectionGroup
+
+    This is a mastapy class.
+    '''
+
+    TYPE = _ACTIVE_IMPORTED_FE_SELECTION_GROUP
+    __hash__ = None
+
+    def __init__(self, instance_to_wrap: 'ActiveImportedFESelectionGroup.TYPE'):
+        super().__init__(instance_to_wrap)
