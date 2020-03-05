@@ -1,0 +1,1 @@
+name = 'automated_pkg'
