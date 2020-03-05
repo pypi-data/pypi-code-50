@@ -1,0 +1,5 @@
+
+STATS_COORDINATOR_CUSTOMER_JOBS_STARTED_COUNT = "coordinator_customer_jobs_started"
+STATS_COORDINATOR_CUSTOMER_JOBS_WAITING_COUNT = "coordinator_customer_jobs_waiting"
+STATS_COORDINATOR_JOB_MISSING_WORKER_COUNT = "coordinator_job_worker_missing"
+STATS_COLLECTOR_JOB_LOGS_COUNT_MASK = "collector_job_logs_{}"
