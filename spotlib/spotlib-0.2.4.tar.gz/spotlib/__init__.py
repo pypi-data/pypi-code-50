@@ -1,0 +1,26 @@
+from spotlib._version import __version__ as version
+
+
+__author__ = 'Blake Huber'
+__version__ = version
+__email__ = "blakeca00@gmail.com"
+
+
+try:
+
+    from spotlib.statics import local_config
+
+    from libtools import Colors
+    from libtools import logd
+
+    # global logger
+    logd.local_config = local_config
+    logger = logd.getLogger(__version__)
+
+except Exception:
+    pass
+
+
+from spotlib.core import EC2SpotPrices as SpotPrices
+from spotlib.core import DurationEndpoints
+from spotlib.core import UtcConversion, utc_conversion
