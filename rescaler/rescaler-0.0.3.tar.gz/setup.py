@@ -1,0 +1,22 @@
+import setuptools
+
+with open("README.md", "r") as fh:
+    long_description = fh.read()
+
+setuptools.setup(
+    name="rescaler",
+    version="0.0.3",
+    author="Sean Gao",
+    author_email="seangaoxy@gmail.com",
+    description="Transform features by scaling each feature to a given range.",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/xga0/rescale-package",
+    packages=setuptools.find_packages(),
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],
+    python_requires='>=3.6',
+)
