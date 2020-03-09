@@ -1,0 +1,1 @@
+from wichaya.wichaya import Wichaya
