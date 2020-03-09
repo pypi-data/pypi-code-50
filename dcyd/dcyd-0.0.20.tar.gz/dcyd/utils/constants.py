@@ -1,0 +1,7 @@
+DCYD_CONFIG_ENV_VAR = 'DCYD_CONFIG_FILE'
+DCYD_APP_BASE_URL = 'https://api.dcyd.io'
+DEFAULT_ENVIRONMENT = 'test'
+MPM_PUBSUB_TOPIC = 'mpm-client-log'
+MPM_LOG_MSG = 'mpm-client-log'
+CONFIG_ROUTE = 'configure'
+CONFIG_FILE = 'dcyd.json'
