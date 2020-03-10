@@ -1,0 +1,413 @@
+#!/usr/bin/env python
+from __future__ import print_function
+from .tabulate import tabulate as tabulate_
+import sys
+import os.path
+import pandas as pd
+
+USAGE_TEXT = """
+ph is a command line tool for streaming csv data.
+
+If you have a csv file `a.csv`, you can pipe it through `ph` on the
+command line by using
+
+$ cat a.csv | ph columns x y | ph tabulate
+
+Use ph help [command] for help on the individual commands.
+
+A list of available commands follows.
+"""
+
+COMMANDS = {}
+
+
+READERS = {
+    "csv": pd.read_csv,
+    "fwf": pd.read_fwf,
+    "json": pd.read_json,
+    "html": pd.read_html,
+    "clipboard": pd.read_clipboard,
+    "xls": pd.read_excel,
+    "odf": pd.read_excel,
+    "hdf5": pd.read_hdf,
+    "feather": pd.read_feather,
+    "parquet": pd.read_parquet,
+    "orc": pd.read_orc,
+    # TODO in pandas 1.0.1? "msgpack": pd.read_msgpack,
+    "stata": pd.read_stata,
+    "sas": pd.read_sas,
+    "spss": pd.read_spss,
+    "pickle": pd.read_pickle,
+    "sql": pd.read_sql,
+    "gbq": pd.read_gbq,
+    "google": pd.read_gbq,
+    "bigquery": pd.read_gbq,
+    ### extras
+    "tsv": lambda fname: pd.read_csv(fname, sep="\t"),
+}
+
+
+def register(fn):
+    COMMANDS[fn.__name__] = fn
+    return fn
+
+
+def pipeout(df, sep=",", index=False, *args, **kwargs):
+    try:
+        print(df.to_csv(sep=sep, index=index, *args, **kwargs))
+    except BrokenPipeError:
+        try:
+            sys.stdout.close()
+        except IOError:
+            pass
+        try:
+            sys.stderr.close()
+        except IOError:
+            pass
+
+
+def pipein():
+    try:
+        return pd.read_csv(sys.stdin)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
+
+@register
+def query(expr):
+    """Using pandas queries.
+
+    Usage: cat a.csv | ph query "x > 5"
+
+    """
+    df = pipein()
+    new_df = df.query(expr)
+    pipeout(new_df)
+
+
+@register
+def appendstr(col, s, newcol=None):
+    """Special method to append a string to the end of a column.
+
+    Usage: cat e.csv | ph appendstr year -01-01 | ph date year
+    """
+    df = pipein()
+    if newcol is None:
+        newcol = col
+    df[newcol] = df[col].astype(str) + s
+    pipeout(df)
+
+
+@register
+def astype(type, column=None, newcolumn=None):
+    """Cast a column to a different type.
+
+    Usage:  cat a.csv | ph astype double x [new_x]
+
+    """
+    df = pipein()
+    if column is None:
+        df = df.astype(type)
+    elif newcolumn is not None:
+        df[newcolumn] = df[column].astype(type)
+    else:
+        df[column] = df[column].astype(type)
+    pipeout(df)
+
+
+@register
+def monotonic(column, direction="+"):
+    """Check if a certain column is monotonically increasing or decreasing.
+
+    Usage:  cat a.csv | ph monotonic x
+            cat a.csv | ph monotonic x +  # equivalent to above
+            cat a.csv | ph monotonic x -  # for decreasing
+
+    """
+    df = pipein()
+    if column not in df:
+        exit("Unknown column {}".format(column))
+    if direction not in "+-":
+        exit("direction must be either + or -")
+    print("{}_monotonic".format(column))
+    if direction == "+":
+        print(df[column].is_monotonic)
+    else:
+        print(df[column].is_monotonic_decreasing)
+
+
+@register
+def plot(index=None):
+    """Plot the csv file.
+
+    Usage:  ph plot [index]
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        exit("plot depends on matplotlib, install ph[plot]")
+
+    df = pipein()
+    if index is not None:
+        df = df.set_index(index)
+    df.plot()
+    plt.show()
+    pipeout(df)
+
+
+@register
+def eval(expr):
+    """Eval expr using pandas.DataFrame.eval.
+
+    Example:  cat a.csv | ph eval "z = x + y"
+
+    """
+    df = pipein()
+    pipeout(df.eval(expr))
+
+
+@register
+def normalize(col=None):
+    df = pipein()
+    if col is None:
+        df = (df - df.min()) / (df.max() - df.min())
+    else:
+        df[col] = (df[col] - df[col].min()) / (df[col].max() - df[col].min())
+    pipeout(df)
+
+
+@register
+def date(col):
+    df = pipein()
+    df[col] = pd.to_datetime(df[col])
+    pipeout(df)
+
+
+@register
+def describe():
+    print(pipein().describe())
+
+
+@register
+def cat(fname=None):
+    """Opens a file if provided (like `open`), or else cats it."""
+    if fname is None:
+        pipeout(pipein())
+    else:
+        pipeout(pd.read_csv(fname))
+
+
+@register
+def tab():
+    pipeout(pipein(), sep="\t")
+
+
+@register
+def tabulate(*args):
+    """Tabulate the output for pretty-printing.
+
+    Usage: cat a.csv | ph tabulate --headers --noindex --format=grid
+
+    Takes arguments
+      * --headers
+      * --noindex
+      * --format=[grid, latex, pretty, ...].
+
+    For a full list of format styles confer the README.
+
+    This function uses the tabulate project available as a standalone
+    package from PyPI.
+
+    Using `tabulate` in a pipeline usually means that the `ph` pipeline ends.
+    This is because of `tabulate`'s focus on user readability over machine
+    readability.
+
+    """
+    headers = tuple()
+    fmt = None
+    index = True
+    if "--noindex" in args:
+        index = False
+    if "--headers" in args:
+        headers = "keys"
+    for opt in args:
+        if opt.startswith("--format="):
+            fmt = opt.split("--format=")[1]
+            break
+    print(tabulate_(pipein(), tablefmt=fmt, headers=headers, showindex=index))
+
+
+@register
+def help(*args, **kwargs):
+    """Writes help (docstring) about the different commands."""
+    if not args:
+        print("Usage: ph command arguments")
+        print(USAGE_TEXT)
+        print("       commands = {}".format(list(COMMANDS.keys())))
+        exit(0)
+    cmd = args[0]
+    import ph
+
+    try:
+        fn = getattr(ph, cmd)
+        ds = getattr(fn, "__doc__")
+    except AttributeError as err:
+        try:
+            fn = getattr(pd.DataFrame, cmd)
+            ds = getattr(fn, "__doc__")
+        except AttributeError as err:
+            ds = ""
+
+    print("Usage: ph {} [?]".format(cmd))
+    print("       {}".format(ds))
+
+
+@register
+def open(ftype, fname):
+    """Open an ftype file fname and stream out.
+
+    Usage:  `ph open csv a.csv`
+            `ph open odf a.ods`
+            `ph open xls a.xls[x]`
+            `ph open parquet a.parquet`
+
+
+    """
+    if ftype not in READERS:
+        exit("Unknown filetype {}".format(ftype))
+    reader = READERS[ftype]
+    pipeout(reader(fname))
+
+
+def _call(attr, *args, **kwargs):
+    pipeout(getattr(pipein(), attr)(*args, **kwargs))
+
+
+def register_forward(attr):
+    COMMANDS[attr] = lambda: _call(attr)
+
+
+@register
+def head(n=10):
+    """Similar to `head` but keeps the header.
+
+    Print the header followed by the first 10 (or n) lines of the stream to
+    standard output.
+
+    """
+    _call("head", int(n))
+
+
+@register
+def tail(n=10):
+    """Similar to `tail` but keeps the header.
+
+    Print the header followed by the last 10 (or n) lines of the stream to
+    standard output.
+
+    """
+    _call("tail", int(n))
+
+
+@register
+def rename(before, after):
+    """Rename a column name.
+
+    Usage:  ph rename before after
+
+    Example:  cat a.csv | ph rename x a | ph rename y b
+
+    """
+    pipeout(pipein().rename(columns={before: after}))
+
+
+@register
+def columns(*cols):
+    """ph columns servers two purposes.
+
+    Called without any arguments, it lists the names of the columns in
+    the stream.
+
+    Called with arguments, it streams out the csv data from the given columns with prescribed order.
+
+    `cat a.csv | ph columns c b` will print columns c and b to standard out,
+    regardless of their order in a.csv.
+
+    """
+    if not cols:
+        print("\n".join(list(pipein().columns)))
+    else:
+        pipeout(pipein()[list(cols)])
+
+
+@register
+def shape():
+    """Print the shape of the csv file, i.e. num cols and num rows.
+
+    The output will have two rows and two columns, with header "rows,columns".
+
+    """
+    print("rows,columns\n" + ",".join([str(x) for x in pipein().shape]))
+
+
+@register
+def empty():
+    """Print a csv file with one column containing True or False.
+
+    The output depends on whether the csv input was empty.
+
+    """
+    print("empty\n{}".format(pipein().empty))
+
+
+pandas_computations = [
+    "abs",
+    "all",
+    "any",
+    "clip",
+    "corr",
+    "count",
+    "cov",
+    "cummax",
+    "cummin",
+    "cumprod",
+    "cumsum",
+    "diff",
+    "kurt",
+    "kurtosis",
+    "mad",
+    "max",
+    "mean",
+    "median",
+    "min",
+    "mode",
+    "pct_change",
+    "prod",
+    "product",
+    "quantile",
+    "rank",
+    "round",
+    "sem",
+    "skew",
+    "sum",
+    "std",
+    "var",
+    "nunique",
+    "transpose",
+]
+for attr in pandas_computations:
+    register_forward(attr)
+
+
+def main():
+    args = sys.argv
+    if len(args) < 2:
+        exit("Usage: ph command [args]\n       ph help")
+    cmd = args[1]
+    if cmd not in COMMANDS:
+        exit("Unknown command {}.".format(cmd))
+    COMMANDS[cmd](*args[2:])
+
+
+if __name__ == "__main__":
+    main()
