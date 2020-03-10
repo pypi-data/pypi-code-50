@@ -1,0 +1,9 @@
+INPUT_VAR_FILE = "/wrapper-scripts/input.yml"
+INVENTORY_FILE = "/etc/philips/conf/inventory"
+ANSIBLE_CFG = "/ansible/ansible.cfg"
+ANSIBLE_VAR_FILE = "/ansible/group_vars/linux.yml"
+REPORT_PREFIX = "hsop_installation_report" #Name of the generated report in the format installation_report_%Y%m%d_%H%M%S.pdf
+REPORT_SUFFIX_FORMAT = "%d%m%Y_%H%M%S" #suffix
+IAC_LOG_PATH = '/var/log/philips'
+IAC_LOG_FILE_NAME_PREFIX = 'hsop_'
+IAC_SUCCESS_MESSAGE = 'Deployment is done!!'
