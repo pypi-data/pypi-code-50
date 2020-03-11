@@ -1,0 +1,5474 @@
+# coding: utf-8
+
+"""
+    Budgea API Documentation
+
+    # Budgea Development Guides  Welcome to **Budgea**'s documentation.  This documentation is intended to get you up-and-running with our APIs and advise on the implementation of some regulatory aspects of your application, following the DSP2's guidelines.  ## Getting Started **IMPORTANT** Depending on your status with regard of the DSP2 regulation, **agent** or **partner**, you may call our APIs or simply use our Webview and callbacks to get the financial data of your users. As an **agent**, you are allowed to call directly our APIs and implement your own form to get the user's credentials. As a **partner**, you cannot manipulate the credentials, and have to delegate this step to us through our webview.  The sections below will document how to use our APIs, make sure you have the **agent** status to do so. For the **partner**, please refer to the section *Webview* and *Callbacks* of this documentation.  ### Overview Your API is a REST API which requires a communication through https to send and receive JSON documents. During your tests, we recommend to make calls to the API with curl or any other HTTP client of your choice. You can watch a video demonstration on this [URL](https://asciinema.org/a/FsaFyt3WAPyDm7sfaZPkwal3V). For the examples we'll use the demo API with address `https://demo.biapi.pro`, you should change that name to your API's name.  ### Hello World Let's start by calling the service `/banks` which lists all available banks. ``` curl https://demo.biapi.pro/2.0/banks/ ``` To log in to a bank webpage, you'll need to know for a given bank, the fields your user should fill in the form. Let's call a  specific bank and ask for an additional resource *fields*. ``` curl https://demo.biapi.pro/2.0/banks/59?expand=fields ``` The response here concerns only 1 bank (since we specified an id) and the resource _Fields_ is added to the response thanks to the query parameter `expand`.  To get more interesting things done, you'll need to send authenticated requests.  ### Authentication The way to authenticate is by passing the `Authorization: Bearer <token>` header in your request. At the setup a _manage token_ have been generated, you can use this token for now, when creating your user we'll see how to generate a user's token. ``` curl https://demo.biapi.pro/2.0/config \\   -H 'Authorization: Bearer <token>' ``` This endpoint will list all the parameters you can change to adapt Budgea to your needs.  We've covered the very first calls. Before diving deeper, let's see some general information about the APIs.  ## Abstract  ### API URL `https://demo.biapi.pro/2.0`  ### Requests format Data format: **application/x-www-form-urlencoded** or **application/json** (suggested)  Additional headers: Authorization: User's token (private)  ### Responses format Data format: **application/json** ([http://www.json.org](http://www.json.org/)) Charset: **UTF-8**  ### Resources Each call on an endpoint will return resources. The main resources are: | Resource            | Description                                                                                                           | | ---------------------|:------------------------------------------------------------------------------------------------------------------   | |Users                 |Represent a user                                                                                                      | |Connection            |A set of data used to authenticate on a website (usually a login and password). There is 1 connection for each website| |Account               |A bank account contained in a connection                                                                              | |Transaction           |An entry in a bank account                                                                                            | |Investment            |An asset in a bank account                                                                                            |  The chain of resources is as follow: **Users ∈ Connections ∈ Accounts ∈ Transactions or Investments**  ### RESTful API  This API is RESTful, which means it is stateless and each resource is accessed with an unique URI.  Several HTTP methods are available:  | Method                  | Description                    | | ------------------------|:-------------------------------| | GET /resources          | List resources                 | | GET /resources/{ID}     | Get a resource from its ID     | | POST /resources         | Create a new resource          | | POST /resources/{ID}    | Update a resource              | | PUT /resources  /{ID}   | Update a resource              | | DELETE /resources       | Remove every resources         | | DELETE /resources/{ID}  | Delete a resource              |   Each resource can contain sub-resources, for example: `/users/me/connections/2/accounts/23/transactions/48`  ### HTTP response codes  | Code        | Message               | Description                                                                                   | | ----------- |:---------------------:|-----------------------------------------------------------------------------------------------| | 200         | OK                    |Default response when a GET or POST request has succeed                                        | | 202         | Accepted              |For a new connection this code means it is necessary to provide complementary information (2FA)| | 204         | No content            |Default response when a POST request succeed without content                                   | | 400         | Bad request           |Supplied parameters are incorrect                                                              | | 403         | Forbidden             |Invalid token                                                                                  | | 500         | Internal Servor Error |Server error                                                                                   | | 503         | Service Unavailable   |Service is temporarily unavailable                                                             |  ### Errors management In case an error occurs (code 4xx or 5xx), the response can contain a JSON object describing this error: ```json {    \"code\": \"authFailure\",    \"message\": \"Wrong password\"  // Optional } ``` If an error is displayed on the website, Its content is returned in error_message field. The list of all possible errors is listed further down this page.  ### Authentication A user is authenticated by an access_token which is sent by the API during a call on one of the authentication services, and can be supplied with this header: `Authorization: Bearer YYYYYYYYYYYYYYYYYYYYYYYYYYY`   There are two user levels:      - Normal user, which can only access to his own accounts     - Administrator, with extended rights  ### Default filters During a call to an URI which lists resources, some filters can be passed as query parameters:  | Parameter   | Type      | Description                                               | | ----------- |:---------:|-----------------------------------------------------------| | offset      | Integer   |Offset of the first returned resource                      | | limit       | Integer   |Limit number of results                                    | | min_date    | Date      |Minimal date (if supported by service), format: YYYY-MM-DD | | max_date    | Date      |Maximal date (if supported by service), format: YYYY-MM-DD |  ### Extend requests During a GET on a set of resources or on a unique resource, it is possible to add a parameter expand to the request to extend relations with other resources:  `GET /2.0/users/me/accounts/123?expand=transactions[category],connection`  ```json {    \"id\" : 123    \"name\" : \"Compte chèque\"    \"balance\" : 1561.15    \"transactions\" : [       {          \"id\" : 9849,          \"simplified_wording\" : \"HALL'S BEER\",          \"value\" : -513.20,          ...          \"category\" : {             \"id\" : 561,             \"name\" : \"Sorties / Bar\",             ...          }        },        ...    ],    \"id_user\" : 1,    \"connection\" : {       \"id\" : 1518,       \"id_bank\" : 41,       \"id_user\" : 1,       \"error\" : null,       ...    } } ```  ### Request example ```http GET /2.0/banks?offset=0&limit=10&expand=fields Host: demo.biapi.pro Accept: application/json Authorization: Bearer <token> ``` ```http HTTP/1.1 200 OK Content-Type: application/json Content-Length: 3026 Server: Apache Date: Fri, 14 Mar 2014 08:24:02 GMT  {    \"banks\" : [       {          \"id_weboob\" : \"bnporc\",          \"name\" : \"BNP Paribas\",          \"id\" : 3,          \"hidden\" : false,          \"fields\" : [             {                \"id\" : 1,                \"id_bank\" : 3,                \"regex\" : \"^[0-9]{5,10}$\",                \"name\" : \"login\",                \"type\" : \"text\",                \"label\" : \"Numéro client\"             },             {                \"id\" : 2,                \"id_bank\" : 3,                \"regex\" : \"^[0-9]{6}$\",                \"name\" : \"password\",                \"type\" : \"password\",                \"label\" : \"Code secret\"             }          ]       },       ...    ]    \"total\" : 41 } ```  ### Constants #### List of bank account types | Type          |Description                        | | -----------   |-----------------------------------| | checking      |Checking account                   | | savings       |Savings account                    | | deposit       |Deposit accounts                   | | loan          |Loan                               | | market        | Market accounts                   | | joint         |Joint account                      | | card          |Card                               | | lifeinsurance |Life insurance accounts            | | pee           |Plan Épargne Entreprise            | | perco         |Plan Épargne Retraite              | | article83     |Article 83                         | | rsp           |Réserve spéciale de participation  | | pea           |Plan d'épargne en actions          | | capitalisation|Contrat de capitalisation          | | perp          |Plan d'épargne retraite populaire  | | madelin       |Contrat retraite Madelin           | | unknown       |Inconnu                            |  #### List of transaction types  | Type         |Description                        | | -----------  |-----------------------------------| |transfer      |Transfers                          | |order         |Orders                             | |check         |Checks                             | |deposit       |Cash deposit                       | |payback       |Payback                            | |withdrawal    |Withdrawal                         | |loan_payment  |Loan payment                       | |bank          |Bank fees                          | |card          |Card operation                     | |deferred_card |Deferred card operation            | |card_summary  |Mensual debit of a deferred card   |  #### List of synchronization errors ##### Error on Connection object The error field may take one of the below values in case of error when accessing the user space.  | Error                      |Description                                                                                       | | -----------------------    |--------------------------------------------------------------------------------------------------| |wrongpass                   |The authentication on website has failed                                                          | |additionalInformationNeeded |Additional information is needed such as an OTP                                                  | |websiteUnavailable          |The website is unavailable, for instance we get a HTTP 503 response when requesting the website   | |actionNeeded                |An action is needed on the website by the user, scraping is blocked                               | |SCARequired                |An SCA process must be done by updating the connection                               | |decoupled                  |Requires a user validation (ex: digital key)| |passwordExpired                   |The password has expired and needs to be changed on the website.                                                         | |webauthRequired                |A complete authentication process is required by update the connection via redirect                            | |bug                         |A bug has occurred during the synchronization. An alert has been sent to Budget Insight           |  #### Error on Account object Errors can be filled at the account level in case we access the user's dashboard but some account related data cannot be retrieved. For instance, we may not access the transactions or investments for a specific account. Getting an error during an account synchronization does not impact the scraping of other acccounts.  | Error                      |Description                                                                                       | | -----------------------    |--------------------------------------------------------------------------------------------------| |websiteUnavailable          |The website or a page is unavailable                                                              | |actionNeeded                |An action is needed on the website by the user, scraping is blocked                               | |bug                         |A bug has occurred during the synchronization. An alert has been sent to Budget Insight           |  Now you know the basics of Budgea API - Basic call to retrieve resources - Add query parameters to aplly filters - Expand resources - Authenticated calls  We're good for the basics! Now let's see how to integrate Budgea in your app and create your first user.  ## Integrate Budgea *(protocol or Webview)* ### The workflow Users of your application exist in the Budgea API. Every User is identified by an access_token which is the shared secret between your application and our API.  The workflow is as below: 1. The user is on your application and wants to share his bank accounts or invoices. 2. A call is made **client side** (browser's javascript or desktop application) to create a temporarily token which will be used to make API calls. 3. A form is built, allowing the user to select the connector to use (bank or provider, depending on context). Every connector requires different kind of credentials. 4. A call on the API is made with the temporarily token to add a **Connection** with the credentials supplied by user. 5. In case of success, the user chooses what bank accounts (**Account**) or subscriptions (**Subscription**) he wants to share with your application. 6. When he validates the share, the temporarily token is transmitted to your server. This one will call the Budgea API with this token to get a permanent token.  **Note** In case your application works without a server (for example a desktop application), the permanent token can be obtained on the 1st step, by supplying a client_secret to /auth/init and the step 6 is omitted. To get more information, read the protocol.  There are 3 steps to integrate Budgea in your application: 1. Provide a way for your users to share their credentials with you 2. Get the data scraped from Budgea 3. Be sure to follow the good practices before going into production  ### Get credentials from users You have 2 options here: - Integrate the Budget Insight's Webview, a turnkey solution to get user's credentials - Create your own form following the protocol (must have the *agent* status)  ### Budgea webview  The Budgea webview complements REST API endpoints with web-based services to handle sensitive or complex operations: - add a connection (to a bank or a provider), or edit/repare access to a connection; - manage connections (add/remove/edit); - edit and validate bank transfers (alpha preview).  Usage of the webview is mandatory if you don't hold an Agent status, since you are not allowed to use API endpoints carrying user credentials, and optional otherwise.  #### Implementation guidelines  ##### Base URL  The base URL of all services must be customized:   `https://{{domain}}.biapi.pro/2.0/auth/webview/`   `https://{{domain}}.biapi.pro/2.0/auth/webview/{{lang}}/`   - `{{domain}}`: substitute with you API domain; - `{{lang}}`: optionally specify the language of the webview, `en` or `fr` (if not specified, an automatic redirection will be performed following the language of the browser).  ##### Browser integration  Services available as part of the webview are designed as parameterized URLs intended to be opened in a web browser. A callback URI must be specified by callers to be notified at the end of the operation flow, similar to OAuth 2 specification.  You are encouraged to integrate web-based steps in your product following UX best practices: - in a web environment, perform a full-page redirect to the URL (using either [HTTP redirect](https://developer.mozilla.org/fr/docs/Web/HTTP/Status/302) or [scripting](https://developer.mozilla.org/fr/docs/Web/API/Location)), and avoid new tabs or popups; - in a native Android app, prefer opening the default browser or relying on [Chrome Custom Tabs](https://developer.chrome.com/multidevice/android/customtabs) to integrating a WebView; - in a native iOS app, prefer using a [SFSafariViewController](https://developer.apple.com/documentation/safariservices/sfsafariviewcontroller) to integrating a WKWebView.  ##### Callback handling  Most flows redirect to a callback URI at the end of the process. Query parameters are added to the URI to identify successful or failed operations.  Successful parameters are specific to each flow. In case of an error, the following parameters are added:  | Parameter | Description | | - | - | | `error` | An lowercase string error code identifying the kind of error that occurred. When the parameter is not present, the response is successful. | | `error_description` | A longer string description of the error (not intended for user display). |  Common error codes include:  | Code | Description | | - | - | | `access_denied` | The user explicitly cancelled the flow. | | `server_error` | Oops, a technical failure occurred during the process. |  **Forward compatibility requirement**: Additional error codes may be added in the future to describe specific cases. When implementing error codes handling, always fallback to a generic case for unknown codes.  ##### Browser compatibility  The webview is designed and tested to work with browsers supported by the Angular framework:   https://angular.io/guide/browser-support  ##### Privacy / GDPR status  The webview itself does not use any kind of long-term data persistence mechanism such as cookies or local storage, but some authentication or authorization steps may delegate to third-party web services that may implement them.  #### Configuration  You can configure the appearance and behaviour of the webview by configuring the associated *Client Application* in the console:  | Key | Format | Description | | - | - | - | | `primary_color` | String | Optional. An accent color (hexadecimal string without '#' prefix) to personalize the UI elements of the webview. If absent, the default color is grey. | | `redirect_uri` | String | Optional. A recommended security whitelist configuration. The `redirect_uri` parameter sent to any endpoint of the webview is checked against the configuration, if any. | | `config.disable_connector_hints` | Boolean | Optional. This flags hides the list of most-used entries in the connector selection step. The default is `false`, i.e. the list is shown. | | `config.use_app_layout` | Boolean | Optional. Use this flag to enable presenting your log as an app icon. The default value is ` false`, i.e. the logo is shown in the top bar of the UI. | | `config.disable_accounts_pre_check` | Boolean | Optional. An optional boolean flag to prevent bank accounts to be automatically pre-checked when the user enters the activation step. The default value is ` false`, i.e. the bank accounts are pre-checked. |  #### Endpoints reference  ##### Add connection flow ``` https://{{domain}}.biapi.pro/2.0/auth/webview/{{lang}}/connect ```  This flow allows an end-user to add a new connection to the API. The flow handles the following steps: - selecting a connector; - authenticating & authorizing with the connector, by collecting credentials or delegating; - managing consent to aggregate accounts/subscriptions; - collecting required information for professional accounts.  ###### Endpoint parameters  | Parameter | Description | | - | - | | `client_id` | Required. The ID of the requesting client application. You can manage client applications of your domain in the admin console. | | `redirect_uri` | Required. An absolute callback URI. The webview will redirect to it at the end of the flow. | | `code` | Optional. A user-scoped temporary code to use with the Budgea API.<br>If you don't provide a code, a new anonymous user will be created before the connection is added, and you will be returned an access token code scoped to it with the success callback. | | `state` | Optional. An opaque string parameter that you can use to carry state across the flow. The parameter will be set \"as is\" on the callback URI. Make sure that the `state` you provide is properly URL-encoded. | | `connector_ids` | Optional. A comma-separated list of connector IDs available to pick from.<br>If the parameter is omitted, all active connectors are available.<br>If you pass a single value, the user is not prompted to choose the connector.<br>This parameter is mutually exclusive with `connector_uuids`. | | `connector_uuids` | Optional. A comma-separated list of connector UUIDs available to pick from.<br>If the parameter is omitted, all active connectors are available.<br>If you pass a single value, the user is not prompted to choose the connector.<br>This parameter is mutually exclusive with `connector_ids`. | | `connector_capabilities` | Optional. A comma-separated list of capabilities to filter available connectors.<br>If the parameter is omitted, `bank` is inferred.<br>If multiple values are provided, only connectors that expose all the requested capabilities are available.<br>To request a bank connection, use `bank`.<br>To request a provider connection, use `document`. | | `account_ibans` | Optional. A comma-separated list of IBANs to filter accounts available for activation in a bank connection context. Other accounts will not be selectable. | | `account_types` | Optional. A comma-separated list of account types to filter accounts available for activation in a bank connection context. Other accounts will not be selectable. | | `account_usages` | Optional. A comma-separated list of account usages to filter accounts available for activation in a bank connection context. Other accounts will not be selectable. |  ###### Successful callback parameters  | Parameter | Description | | - | - | | `connection_id` | The id of the newly created connection. Please note that when redirecting to the callback URI, the accounts and/or subscriptions are available in the API, but bank transactions or documents may still be syncing in background. | | `code` | Optional. If a `code` was *not* initially specified, an API code that you must exchange to obtain a permanent access token associated with the newly-created anonymous user holding the connection. The parameter is URL-encoded, make sure to handle it accordingly. | | `state` | Optional. Identical to the `state` parameter that was initially specified. |  ###### Additional error codes  | Code | Description | | - | - | | `tos_declined` | The end-user refused to validate the terms of service. |  ##### Re-auth / edit connection credentials flow  ``` https://{{domain}}.biapi.pro/2.0/auth/webview/{{lang}}/reconnect ```  This flow allows an end-user to re-authenticate against a bank or a provider in order to recover an existing connection, or to completely reset credentials associated with a connection.  ###### Endpoint parameters  | Parameter | Description | | - | - | | `client_id` | Required. The ID of the requesting client application. You can manage client applications of your domain in the admin console. | | `redirect_uri` | Required. An absolute callback URI. The webview will redirect to it at the end of the flow. | | `code` | Required. A user-scoped temporary code to use with the Budgea API. | | `connection_id` | Required. The id of the existing connection. | | `state` | Optional. An opaque string parameter that you can use to carry state across the flow. The parameter will be set \"as is\" on the callback URI. Make sure that the `state` you provide is properly URL-encoded. | | `reset_credentials` | Optional. In the default mode (`false`), the service will try to recover the connection and prompt the user only with outdated or transient information (new password, OTP...).<br>Set the parameter to `true` to force resetting all the credentials associated with the connection. This parameter may not apply to all connectors. |  ###### Successful callback parameters  This flow adds no parameter to the callback URI in case of success, except from `state`.  ##### Manage connections  ``` https://{{domain}}.biapi.pro/2.0/auth/webview/{{lang}}/manage ``` This flow allows an end-user to manage the connections associated with his account in the API. The user can add new connections, remove existing ones, fix connection errors, reset credentials or activate/deactivate bank accounts.  Support of `redirect_uri` in this flow is optional, as it can be integrated or presented as a terminal step, without relying on a final redirection.  ###### Endpoint parameters  | Parameter | Description | | - | - | | `client_id` | Required. The ID of the requesting client application. You can manage client applications of your domain in the admin console. | | `code` | Required. A user-scoped temporary code to use with the Budgea API. | | `redirect_uri` | Optional. An absolute callback URI. When provided, the webview will display a close button that redirects to it. | | `state` | Optional. An opaque string parameter that you can use to carry state across the flow when providing a `redirect_uri`. The parameter will be set \"as is\" on the callback URI. Make sure that the `state` you provide is properly URL-encoded. | | `connector_capabilities` | Optional. A comma-separated list of capabilities to filter available connectors when adding a new connection.<br>If the parameter is omitted, `bank` is inferred.<br>If multiple values are provided, only connectors that expose all the requested capabilities are available.<br>To request a bank connection, use `bank`.<br>To request a provider connection, use `document`. | | `account_types` | Optional. A comma-separated list of account types to filter accounts available for activation on adding a new bank connection or updating existing connections. Other accounts will not be selectable. | | `account_usages` | Optional. A comma-separated list of account usages to filter accounts available for activation in a bank connection context. Other accounts will not be selectable. |  ###### Callback parameters  This flow adds no parameter to the callback URI, except from `state`.  ##### Execute a bank transfer (preview)  **Disclaimer**: Transfer or payment services are available as a preview, protocols and parameters are subject to change in upcoming beta/final releases.  ``` https://{{domain}}.biapi.pro/2.0/auth/webview/{{lang}}/transfer ``` This flow allows an end-user to execute a bank transfer. The flow handles the following steps: - if the transfer is not already created, all steps to authenticate with a bank, select the recipient, the emitter account, the amount and label; - executing the transfer, including managing SCAs for recipient registration and/or transfer validation.  ###### Endpoint parameters  | Parameter | Description | | - | - | | `client_id` | Required. The ID of the requesting client application. You can manage client applications of your domain in the admin console. | | `redirect_uri` | Required. An absolute callback URI. The webview will redirect to it at the end of the flow. | | `code` | Required. A user-scoped temporary code to use with the Budgea API.<br>If you don't provide a code, a new anonymous user will be created before a connection is added and the transfer is executed, and you will be returned an access token code scoped to it with the success callback. | | `state` | Optional. An opaque string parameter that you can use to carry state across the flow. The parameter will be set \"as is\" on the callback URI. Make sure that the `state` you provide is properly URL-encoded. | | `transfer_id`| Optional. The ID of an prepared transfer to be validated in the webview. The user cannot edit anything on the transfer before validation. |  ###### Successfull callback parameters  | Parameter | Description | | - | - | | `transfer_id` | The ID of the transfer that was created and executed. | | `code` | Optional. If a `code` was *not* initially specified, an API code that you can exchange to obtain a permanent access token associated with the newly-created anonymous user holding the transfer. The parameter is URL-encoded, make sure to handle it accordingly. | | `state` | Optional. Identical to the `state` parameter that was initially specified. |  ###### Additional error codes  | Code | Description | | - | - | | `tos_declined` | The end-user refused to validate the terms of service. |  #### Migrating from v3  We provide a full backward compatibility layer with current implementations of the webview v3 to ease the transition. All endpoints remains accessible, with the same parameters and callback behaviour. Migration instructions are provided below.  *The v3 compatibility mode is expected to be removed on 31 December 2019.* You should migrate your implementation a soon as possible to new endpoints and parameters.  ##### Add connection flow / Edit connection credentials   ``` /connect/select ```  This endpoint has been superseded by `/connect` (no suffix) for adding a new connection, and `/reconnect` for resetting or updating an existing connection.  | Endpoint parameter | Migration instructions | | - | - | | `client_id` | No change. | | `redirect_uri`, `state` | No change. | | `response_type` | This parameter is not used anymore. | | `id_connector`, `connectors` | Superseded by `connector_ids` sent to the `/connect` endpoint. | | `types` | Superseded by `connector_capabilities` sent to the `/connect` endpoint.<br>Use`connector_capabilities=bank` (bank connection) or `connector_capabilities=document` (provider connection). | | `id_connection` | Superseded by `connection_id` sent to the `/reconnect` endpoint. |  Passing the code or access token as an URL fragment is no longer supported, use the `code` query parameter.  | Callback parameter | Migration instructions | | - | - | | `id_connection` | Superseded by `connection_id`.<br>In the `/reconnect` flow, this parameter is not returned anymore. | | `code` | Still named `code`, but in the `/connect` flow the parameter is now **only** added if an anonymous user was created, i.e. the `code` parameter was **not** provided as a query parameter or fragment.<br>In the `/reconnect` flow, this parameter is not returned anymore. | | `state` | No change. |  ##### Manage connections  ``` /accounts ```  This endpoint has been superseded by `/manage`, that now fully allows users to add/remove connections, reset their credentials or recover from error states.  | Endpoint parameter | Migration instructions | | - | - | | `client_id` | No change. | | `redirect_uri`, `state` | No change, these parameters are now optional. | | `response_type` | This parameter is not used anymore. | | `types` | Superseded by `connector_capabilities`.<br>Use`connector_capabilities=bank` (bank connection) or `connector_capabilities=document` (provider connection). |  Passing the code or access token as an URL fragment is no longer supported, use the `code` query parameter.  | Callback parameter | Migration instructions | | - | - | | `code` | This parameter is not returned anymore. | | `state` | No change. |  ##### Behaviour change  In v3, the `/accounts` flow used to redirect to the `redirect_uri` after a connection addition. This is no longer the case in v4, where redirection is only performed when the user explicitly closes the flow. If you need to perform actions when a connection is added or removed, you should rely on webhooks.  #### Protocol This section describes the protocol used to set bank and provider accounts of a user, in case you don't want to use the webview.  The idea is to call the following services client-side (with AJAX in case of a web application), to ensure the bank and providers credentials will not be sent to your servers.  1. /auth/init ```http POST /auth/init ``` ```json {    \"auth_token\" : \"fBqjMZbYddebUGlkR445JKPA6pCoRaGb\",    \"type\" : \"temporary\",    \"expires_in\" : 1800,    \"id_user\": 1 } ``` This service creates a temporarily token, to use in the \"Authorization\" header in next calls to the API  The returned token has a life-time of 30 minutes, and should be transfered to the API then (cf Permanent Token), so that your server can get a permanent access_token.  It is possible to generate a permanent token immediately, by calling the service with the manage_token, or by supply parameters client_id and client_secret.  2. /banks or /providers ```http GET /banks?expand=fields Authorization: Bearer <token> ``` ```json {    \"hidden\" : false,          \"charged\" : true,          \"name\" : \"American Express\",          \"id\" : 30,          \"fields\" : [             {                \"values\" : [                   {                      \"label\" : \"Particuliers/Professionnels\",                      \"value\" : \"pp\"                   },                   {                      \"value\" : \"ent\",                      \"label\" : \"Entreprises\"                   }                ],                \"label\" : \"Type de compte\",                \"regex\" : null,                \"name\" : \"website\",                \"type\" : \"list\"             },             {                \"type\" : \"password\",                \"label\" : \"Code secret\",                \"name\" : \"password\",                \"regex\" : \"^[0-9]{6}$\"             }          ],       },       ...    ],    \"total\" : 44, } ``` You get a list of connectors, and all associated fields needed to build the form at step 3. You can also use that list to show to your user, all available banks.  3. /users/me/connections Make a POST request and supply the id_bank (ID of the chosen bank) or id_provider (ID of provider), and all requested fields as key/value parameters. For example: ```http POST /users/me/connections Authorization: Bearer <token> -F login=12345678 -F password=123456 -F id_bank=59 ``` You can get the following return codes:  |Code           |Description                                                  | |---------------|------------------------------------------------------------ | |200            |The connection has succeed and has been created              | |202            |It is necessary to provide complementary information. This occurs on the first connection on some kind of Boursorama accounts for example, where a SMS is sent to the customer. It is necessary to ask the user to fill fields requested in the fields, and do a POST again on /users/me/connections/ID, with the connection ID in id_connection. | |400            |Unable to connect to the website, the field error in the JSON can be **websiteUnavailable** or **wrongpass**  | |403            |Invalid token                                                |  4. Activate accounts The accounts the user wants to aggregate must be activated before any transaction or investment is retrieved. Several accounts can be activated in 1 request by separating the account ids with commas. ```http PUT /users/me/connections/<id_connection>/accounts/<id_account>?all ```  5. Permanent token If the user validates the share of his accounts, it is necessary to transform the temporary code to a permanent access_token (so that the user won't expire).  To do that, make a POST request on /auth/token/access with the following parameters: |Parameter            |Description                                                     | |---------------------|----------------------------------------------------------------| |code                 |The temporarily token which will let you get the access_token   | |client_id            |The ID of your client application                               | |client_secret        |The secret of your client application                           |  ```json POST /auth/token/access  {    \"client_id\" : 17473055,    \"client_secret\" : \"54tHJHjvodbANVzaRtcLzlHGXQiOgw80\",    \"code\" : \"fBqjMZbYddebUGlkR445JKPA6pCoRaGb\" } ``` ```http HTTP/1.1 200 OK  {    \"access_token\" : \"7wBPuFfb1Hod82f1+KNa0AmrkIuQ3h1G\",    \"token_type\":\"Bearer\" } ```  ### Update accounts Another important call is when a user wants to add/remove connections to banks or providers, or to change the password on one of them, it is advised to give him a temporarily code from the permanent access_token, with the following call (using the access_token as bearer): ```http POST /auth/token/code Authorization: Bearer <token> ``` ```json {    \"code\" : \"/JiDppWgbmc+5ztHIUJtHl0ynYfw682Z\",    \"type\" : \"temporary\",    \"expires_in\" : 1800, } ``` Its life-time is 30 minutes, and let the browser to list connections and accounts, via `GET /users/me/connections?expand=accounts` for example.   To update the password of a connection, you can do a POST on the *connection* resource, with the field *password* in the data. The new credentials are checked to make sure they are valid, and the return codes are the same as when adding a connection.  ## Getting the data (Webhooks) You have created your users and their connections, now it's time to get the data. There are 2 ways to retrieve it, the 2 can be complementary: - make regular calls to the API - use the webhooks (recommended)  ### Manual Synchronization It is possible to do a manual synchronization of a user. We recommend to use this method in case the user wants fresh data after logging in.  To trigger the synchronization, call the API as below: `PUT /users/ID/connections` The following call is blocking until the synchronization is terminated.  Even if it is not recommended, it's possible to fetch synchronously new data. To do that, you can use the *expand* parameter: ` /users/ID/connections?expand=accounts[transactions,investments[type]],subscriptions` ```json {    \"connections\" : [       {          \"accounts\" : [             {                \"balance\" : 7481.01,                \"currency\" : {                   \"symbol\" : \"€\",                   \"id\" : \"EUR\",                   \"prefix\" : false                },                \"deleted\" : null,                \"display\" : true,                \"formatted_balance\" : \"7 481,01 €\",                \"iban\" : \"FR76131048379405300290000016\",                \"id\" : 17,                \"id_connection\" : 7,                \"investments\" : [                   {                      \"code\" : \"FR0010330902\",                      \"description\" : \"\",                      \"diff\" : -67.86,                      \"id\" : 55,                      \"id_account\" : 19,                      \"id_type\" : 1,                      \"label\" : \"Agressor PEA\",                      \"portfolio_share\" : 0.48,                      \"prev_diff\" : 2019.57,                      \"quantity\" : 7.338,                      \"type\" : {                         \"color\" : \"AABBCC\",                         \"id\" : 1,                         \"name\" : \"Fonds action\"                      },                      \"unitprice\" : 488.98,                      \"unitvalue\" : 479.73,                      \"valuation\" : 3520.28                   }                ],                \"last_update\" : \"2015-07-04 15:17:30\",                \"name\" : \"Compte chèque\",                \"number\" : \"3002900000\",                \"transactions\" : [                   {                      \"active\" : true,                      \"application_date\" : \"2015-06-17\",                      \"coming\" : false,                      \"comment\" : null,                      \"commission\" : null,                      \"country\" : null,                      \"date\" : \"2015-06-18\",                      \"date_scraped\" : \"2015-07-04 15:17:30\",                      \"deleted\" : null,                      \"documents_count\" : 0,                      \"formatted_value\" : \"-16,22 €\",                      \"id\" : 309,                      \"id_account\" : 17,                      \"id_category\" : 9998,                      \"id_cluster\" : null,                      \"last_update\" : \"2015-07-04 15:17:30\",                      \"new\" : true,                      \"original_currency\" : null,                      \"original_value\" : null,                      \"original_wording\" : \"FACTURE CB HALL'S BEER\",                      \"rdate\" : \"2015-06-17\",                      \"simplified_wording\" : \"HALL'S BEER\",                      \"state\" : \"parsed\",                      \"stemmed_wording\" : \"HALL'S BEER\",                      \"type\" : \"card\",                      \"value\" : -16.22,                      \"wording\" : \"HALL'S BEER\"                   }                ],                \"type\" : \"checking\"             }          ],          \"error\" : null,          \"expire\" : null,          \"id\" : 7,          \"id_user\" : 7,          \"id_bank\" : 41,          \"last_update\" : \"2015-07-04 15:17:31\"       }    ],    \"total\" : 1, } ```  ### Background synchronizations & Webhooks Webhooks are callbacks sent to your server, when an event is triggered during a synchronization. Synchronizations are automatic, the frequency can be set using the configuration key `autosync.frequency`. Using webhooks allows you to get the most up-to-date data of your users, after each synchronization.  The automatic synchronization makes it possible to recover new bank entries, or new invoices, at a given frequency. You have the possibility to add webhooks on several events, and choose to receive each one on a distinct URL. To see the list of available webhooks you can call the endpoint hereunder: ``` curl https://demo.biapi.pro/2.0/webhooks_events \\   -H 'Authorization: Bearer <token>' ```  The background synchronizations for each user are independent, and their plannings are spread over the day so that they do not overload any website.  Once the synchronization of a user is over, a POST request is sent on the callback URL you have defined, including all webhook data. A typical json sent to your server is as below: ```http POST /callback HTTP/1.1 Host: example.org Content-Length: 959 Accept-Encoding: gzip, deflate, compress Accept: */* User-Agent: Budgea API/2.0 Content-Type: application/json; charset=utf-8 Authorization: Bearer sl/wuqgD2eOo+4Zf9FjvAz3YJgU+JKsJ  {    \"connections\" : [       {          \"accounts\" : [             {                \"balance\" : 7481.01,                \"currency\" : {                   \"symbol\" : \"€\",                   \"id\" : \"EUR\",                   \"prefix\" : false                },                \"deleted\" : null,                \"display\" : true,                \"formatted_balance\" : \"7 481,01 €\",                \"iban\" : \"FR76131048379405300290000016\",                \"id\" : 17,                \"id_connection\" : 7,                \"investments\" : [                   {                      \"code\" : \"FR0010330902\",                      \"description\" : \"\",                      \"diff\" : -67.86,                      \"id\" : 55,                      \"id_account\" : 19,                      \"id_type\" : 1,                      \"label\" : \"Agressor PEA\",                      \"portfolio_share\" : 0.48,                      \"prev_diff\" : 2019.57,                      \"quantity\" : 7.338,                      \"type\" : {                         \"color\" : \"AABBCC\",                         \"id\" : 1,                         \"name\" : \"Fonds action\"                      },                      \"unitprice\" : 488.98,                      \"unitvalue\" : 479.73,                      \"valuation\" : 3520.28                   }                ],                \"last_update\" : \"2015-07-04 15:17:30\",                \"name\" : \"Compte chèque\",                \"number\" : \"3002900000\",                \"transactions\" : [                   {                      \"active\" : true,                      \"application_date\" : \"2015-06-17\",                      \"coming\" : false,                      \"comment\" : null,                      \"commission\" : null,                      \"country\" : null,                      \"date\" : \"2015-06-18\",                      \"date_scraped\" : \"2015-07-04 15:17:30\",                      \"deleted\" : null,                      \"documents_count\" : 0,                      \"formatted_value\" : \"-16,22 €\",                      \"id\" : 309,                      \"id_account\" : 17,                      \"id_category\" : 9998,                      \"id_cluster\" : null,                      \"last_update\" : \"2015-07-04 15:17:30\",                      \"new\" : true,                      \"original_currency\" : null,                      \"original_value\" : null,                      \"original_wording\" : \"FACTURE CB HALL'S BEER\",                      \"rdate\" : \"2015-06-17\",                      \"simplified_wording\" : \"HALL'S BEER\",                      \"state\" : \"parsed\",                      \"stemmed_wording\" : \"HALL'S BEER\",                      \"type\" : \"card\",                      \"value\" : -16.22,                      \"wording\" : \"HALL'S BEER\"                   }                ],                \"type\" : \"checking\"             }          ],          \"bank\" : {             \"id_weboob\" : \"ing\",             \"charged\" : true,             \"name\" : \"ING Direct\",             \"id\" : 7,             \"hidden\" : false          },          \"error\" : null,          \"expire\" : null,          \"id\" : 7,          \"id_user\" : 7,          \"id_bank\" : 41,          \"last_update\" : \"2015-07-04 15:17:31\"       }    ],    \"total\" : 1,    \"user\" : {       \"signin\" : \"2015-07-04 15:17:29\",       \"id\" : 7,       \"platform\" : \"sharedAccess\"    } } ``` The authentication on the callback is made with the access_token of the user (which is a shared secret between your server and the Budgea API).  When you are in production, it is needed to define a HTTPS URL using a valid certificate, delivered by a recognized authority. If this is not the case, you can contact us to add your CA (Certificate Authority) to our PKI (Public Key Infrastructure).  Important: it is necessary to send back a HTTP 200 code, without what we consider that data is not correctly taken into account on your system, and it will be sent again at the next user synchronization.  ## Guidelines for production Now you should have integrated the API inside your application. Make sure your Webhooks URLs are in HTTPS, if so you can enable the production state of the API.  To make things great, here are some good practices, please check you have respected them: - You have provided to your users a way to configure their accounts - You have provided to your users a way to change their account passwords - You consider the **error** field of Connections, to alert the user in case the state is **wrongpass** - You map IDs of Accounts, Subscriptions, Transactions and Documents in your application, to be sure to correctly match them - When the deleted field is set on a bank transaction, you delete it in your database - You don't loop on all users to launch synchronizations, this might saturate the service  If you have questions about above points, please contact us. Otherwise, you can put into production!  ### Going further If you want to raise the bar for your app and add features such as the ability to do transfers, get invoices, aggregate patrimony and more, please refer to the sections below. We'll discuss complementary APIs building upon the aggregation, allowing for the best of financial apps.  ## Budgea API Pay This API allows for the emition of transfers between the aggregated accounts. Just like the simple aggregation, BI provides a webview or a protocol to follow, to implement this feature.  ### API pay protocol This section describes how the transfer and recipient protocol work, in case you don't want to integrate the webview. The idea is to do following calls client side (with AJAX in case of a web application), so that the interaction with the Budgea API is transparent.  #### Executing a transfer 1. /auth/token/code If you do calls client side, get a new temporary code for the user, from the access_token. This will prevent security issues. ``` curl -d '' \\   https://demo.biapi.pro/2.0/auth/token/code \\   -H 'Authorization: Bearer <token>' ``` ```json {    \"code\": \"/JiDppWgbmc+5ztHIUJtHl0ynYfw682Z\",    \"type\": \"temporary\",    \"expires_in\": 1800 } ``` The returned token has a life-time of 30 minutes.  2. /users/me/accounts?able_to_transfer=1 List all the accounts that can do transfers. Authenticate the call with the code you got at step 1. ``` curl https://demo.biapi.pro/2.0/users/me/accounts?able_to_transfer=1 \\   -H 'Authorization: Bearer /JiDppWgbmc+5ztHIUJtHl0ynYfw682Z' ``` ```json {   \"accounts\" : [       {          \"display\" : true,          \"balance\" : 2893.36,          \"id_type\" : 2,          \"number\" : \"****1572\",          \"type\" : \"checking\",          \"deleted\" : null,          \"bic\" : \"BNPAFRPPXXX\",          \"bookmarked\" : false,          \"coming\" : -2702.74,          \"id_user\" : 1,          \"original_name\" : \"Compte de chèques\",          \"currency\" : {             \"symbol\" : \"€\",             \"id\" : \"EUR\",             \"prefix\" : false          },          \"name\" : \"lol\",          \"iban\" : \"FR7630004012550000041157244\",          \"last_update\" : \"2016-12-28 12:31:04\",          \"id\" : 723,          \"formatted_balance\" : \"2893,36 €\",          \"able_to_transfer\" : true,          \"id_connection\" : 202       }    ],    \"total\" : 1 } ```  3. /users/me/accounts/ID/recipients List all available recipients for a given account. ``` curl https://demo.biapi.pro/2.0/users/me/accounts/723/recipients?limit=1 \\   -H 'Authorization: Bearer /JiDppWgbmc+5ztHIUJtHl0ynYfw682Z' ``` ```json {   \"total\" : 27,    \"recipients\" : [       {          \"bank_name\" : \"BNP PARIBAS\",          \"bic\" : \"BNPAFRPPXXX\",          \"category\" : \"Interne\",          \"deleted\" : null,          \"enabled_at\" : \"2016-10-31 18:52:53\",          \"expire\" : null,          \"iban\" : \"FR7630004012550003027641744\",          \"id\" : 1,          \"id_account\" : 1,          \"id_target_account\" : 2,          \"label\" : \"Livret A\",          \"last_update\" : \"2016-12-05 12:07:24\",          \"time_scraped\" : \"2016-10-31 18:52:54\",          \"webid\" : \"2741588268268091098819849694548441184167285851255682796371\"       }    ] } ```  4. /users/me/accounts/ID/recipients/ID/transfers Create the transfer ``` curl \\   https://demo.biapi.pro/2.0/users/me/accounts/1/recipients/1/transfers \\   -H 'Authorization: Bearer /JiDppWgbmc+5ztHIUJtHl0ynYfw682Z' \\   -F amount=10, \\   -F label=\"Test virement\", \\   -F exec_date=\"2018-09-12\" // optional ``` ```json {    \"account_iban\" : \"FR7630004012550000041157244\",    \"amount\" : 10,    \"currency\" : {       \"id\" : \"EUR\",       \"prefix\" : false,       \"symbol\" : \"€\"    },    \"exec_date\" : \"2018-09-12\",    \"fees\" : null    \"formatted_amount\" : \"10,00 €\",    \"id\" : 22,    \"id_account\" : 1,,    \"id_recipient\" : 1,    \"label\" : \"Test virement\",    \"recipient_iban\" : \"FR7630004012550003027641744\",    \"register_date\" : \"2018-09-12 10:34:59\",    \"state\" : \"created\",    \"webid\" : null } ```  5. /users/me/transfers/ID Execute the transfer ``` curl \\   https://demo.biapi.pro/2.0/users/me/transfers/22 \\   -H 'Authorization: Bearer /JiDppWgbmc+5ztHIUJtHl0ynYfw682Z' \\   -F validated=true ``` ```json {    \"account_iban\" : \"FR7630004012550000041157244\",    \"amount\" : 10,    \"currency\" : {       \"id\" : \"EUR\",       \"prefix\" : false,       \"symbol\" : \"€\"    },    \"exec_date\" : \"2016-12-19\",    \"fees\" : null,    \"fields\" : [       {          \"label\" : \"Code secret BNP Paribas\",          \"type\" : \"password\",          \"regex\" : \"^[0-9]{6}$\",          \"name\" : \"password\"       }    ],    \"formatted_amount\" : \"10,00 €\",    \"id\" : 22,    \"id_account\" : 1,    \"id_recipient\" : 1,    \"label\" : \"Test virement\",    \"recipient_iban\" : \"FR7630004012550003027641744\",    \"register_date\" : \"2016-12-19 10:34:59\",    \"state\" : \"created\",    \"webid\" : null } ``` Here, an authentication step asks user to enter his bank password. The transfer can be validated with:  ``` curl \\   https://demo.biapi.pro/2.0/users/me/transfers/22 \\   -H 'Authorization: Bearer /JiDppWgbmc+5ztHIUJtHl0ynYfw682Z' \\   -F validated=true \\   -F password=\"123456\" ``` ```json {    \"account_iban\" : \"FR7630004012550000041157244\",    \"currency\" : {       \"id\" : \"EUR\",       \"prefix\" : false,       \"symbol\" : \"€\"    },    \"amount\" : 10,    \"exec_date\" : \"2016-12-19\",    \"fees\" : 0,    \"formatted_amount\" : \"10,00 €\",    \"id\" : 22,    \"id_account\" : 1,    \"id_recipient\" : 1,    \"label\" : \"Test virement\",    \"recipient_iban\" : \"FR7630004012550003027641744\",    \"register_date\" : \"2016-12-19 10:34:59\",    \"state\" : \"pending\",    \"webid\" : \"ZZ10C4FKSNP05TK95\" } ``` The field state is changed to *pending*, telling that the transfer has been correctly executed on the bank. A connection synchronization is then launched, to find the bank transaction in the movements history. In this case, the transfer state will be changed to *done*.  #### Adding a recipient 1. /auth/token/code Get a temporary token for the user. Same procedure than step 1 for a transfer.  2. /users/me/accounts?able_to_transfer=1 List accounts allowing transfers. Same procedure than step 2 for a transfer.  3. /users/me/accounts/ID/recipients/ Add a new recipient. ``` curl \\   https://demo.biapi.pro/2.0/users/me/accounts/1/recipients \\   -H 'Authorization: Bearer /JiDppWgbmc+5ztHIUJtHl0ynYfw682Z' \\   -F iban=FR7613048379405300290000355 \\   -F label=\"Papa\", \\   -F category=\"Famille\" // optional ``` ```json {    \"bank_name\" : \"BNP PARIBAS\",    \"bic\" : \"BNPAFRPPXXX\",    \"category\" : \"Famille\",    \"deleted\" : null,    \"enabled_at\" : null,    \"expire\" : \"2017-04-29 16:56:20\",    \"fields\" : [       {          \"label\" : \"Veuillez entrer le code reçu par SMS\",          \"type\" : \"password\",          \"regex\" : \"^[0-9]{6}$\",          \"name\" : \"sms\"       }    ],    \"iban\" : \"FR7613048379405300290000355\",    \"id\" : 2,    \"id_account\" : 1,    \"id_target_account\" : null,    \"label\" : \"Papa\",    \"last_update\" : \"2017-04-29 16:26:20\",    \"time_scraped\" : null,    \"webid\" : null } ``` It is necessary to post on the object Recipient with the requested fields (here sms), until the add is validated: ``` curl \\   https://demo.biapi.pro/2.0/users/me/accounts/1/recipients/2 \\   -H 'Authorization: Bearer /JiDppWgbmc+5ztHIUJtHl0ynYfw682Z' \\   -F sms=\"123456\" ``` ```json {    \"bank_name\" : \"BNP PARIBAS\",    \"bic\" : \"BNPAFRPPXXX\",    \"category\" : \"Famille\",    \"deleted\" : null,    \"enabled_at\" : \"2017-05-01 00:00:00\",    \"expire\" : null,    \"iban\" : \"FR7613048379405300290000355\",    \"id\" : 2,    \"id_account\" : 1,    \"id_target_account\" : null,    \"label\" : \"Papa\",    \"last_update\" : \"2017-04-29 16:26:20\",    \"time_scraped\" : null,    \"webid\" : \"2741588268268091098819849694548441184167285851255682796371\" } ``` If the field enabled_at is in the future, it means that it isn't possible yet to execute a transfer, as the bank requires to wait a validation period.  ### API Pay Webview This section describes how to integrate the webview of the Budgea Pay API inside your application, to let your users do transfers to their recipients.  #### User redirection To redirect the user to the webview, it is necessary to build a URI authenticated with a temporary token. This can be done from our library, or by calling the endpoint `/auth/token/code` (see the protocol section for an example). If the parameter **redirect_uri** is supplied, the user will be redirected to that page once the transfer is done.  #### List of pages Here are a list a pages you may call to redirect your user directly on a page of the process: |Path                                 |Description of the page                                                           | |-------------------------------------|----------------------------------------------------------------------------------| |/transfers                           |List Transfers                                                                    | |/transfers/accounts                  |List emitter accounts                                                             | |/transfers/accounts/id/recipients    |List recipients                                                                   | |/transfers/accounts/id/recipients/id |Initialization of a transfer between the account and the recipient                | |/transfers/id                        |Detail of a given transfer                                                        |  ## Deprecated  This section lists all the deprecated features in Budgea API. The associated date is the date of its removal. **Do not use them**.  ### Key Investments (**2019-06-24**)  Adding a temporary new key \"all_investments\" that will include deleted investments in the **webhooks**.  ### No automatic expand on User objects (**2019-07-30**) In the API responses, by default, User objects won't display the keys \"config\", \"alert_settings\" and \"invites\" anymore. You will still be able to access this data by expanding the request. Example: GET /users/me/?expand=alert_settings,config  ### Renaming of \"type\" field for jwt tokens (**2019-07-30**) For user's tokens in the jwt format, the \"type\" field will be renamed from \"shared_access\" to \"sharedAccess\".   # noqa: E501
+
+    The version of the OpenAPI document: 2.0
+    Contact: rienafairefr@gmail.com
+    Generated by: https://openapi-generator.tech
+"""
+
+
+import pprint
+import re  # noqa: F401
+
+import six
+
+import marshmallow
+from marshmallow import Schema, validates, ValidationError, post_load, missing
+
+import budgea
+import budgea.fields
+from budgea.configuration import Configuration
+
+
+"""
+CodegenModel{parent='null', parentSchema='null', interfaces=null, allParents=null, parentModel=null, interfaceModels=null, children=null, anyOf=[], oneOf=[], allOf=[], name='Connection', classname='Connection', title='null', description='null', classVarName='connection', modelJson='{
+  "required" : [ "active", "id", "id_connector" ],
+  "type" : "object",
+  "properties" : {
+    "accounts" : {
+      "type" : "array",
+      "items" : {
+        "$ref" : "#/components/schemas/ConnectionAccount"
+      }
+    },
+    "active" : {
+      "type" : "boolean",
+      "description" : "This connection is active and will be automatically synced",
+      "default" : true
+    },
+    "bank" : {
+      "$ref" : "#/components/schemas/ConnectionBank"
+    },
+    "connector" : {
+      "$ref" : "#/components/schemas/ConnectionBank"
+    },
+    "connector_uuid" : {
+      "type" : "string",
+      "description" : "uuid of the connector (replaces id_connector)"
+    },
+    "created" : {
+      "type" : "string",
+      "description" : "Creation date",
+      "format" : "date-time"
+    },
+    "error" : {
+      "type" : "string",
+      "nullable" : true
+    },
+    "error_message" : {
+      "type" : "string",
+      "description" : "If fail, error message received from bank or provider",
+      "nullable" : true
+    },
+    "expire" : {
+      "type" : "string",
+      "description" : "Expiration of the connection source. Used to purge the connection in case completion was not finished",
+      "format" : "date-time",
+      "nullable" : true
+    },
+    "id" : {
+      "type" : "integer",
+      "description" : "ID of connection"
+    },
+    "id_bank" : {
+      "type" : "integer"
+    },
+    "id_connector" : {
+      "type" : "integer",
+      "description" : "ID of the related connector"
+    },
+    "id_provider" : {
+      "type" : "integer"
+    },
+    "id_user" : {
+      "type" : "integer",
+      "description" : "ID of the related user"
+    },
+    "informations" : {
+      "$ref" : "#/components/schemas/ConnectionInformations"
+    },
+    "last_push" : {
+      "type" : "string",
+      "description" : "Last successful push",
+      "format" : "date-time",
+      "nullable" : true
+    },
+    "last_update" : {
+      "type" : "string",
+      "description" : "Last successful update",
+      "format" : "date-time"
+    },
+    "next_try" : {
+      "type" : "string",
+      "description" : "Date of next synchronization",
+      "format" : "date-time"
+    },
+    "state" : {
+      "type" : "string",
+      "nullable" : true
+    },
+    "subscriptions" : {
+      "type" : "array",
+      "items" : {
+        "$ref" : "#/components/schemas/ConnectionSubscription"
+      }
+    }
+  }
+}', dataType='object', xmlPrefix='null', xmlNamespace='null', xmlName='null', classFilename='connection', unescapedDescription='null', discriminator=null, defaultValue='null', arrayModelType='null', isAlias=false, isString=false, isInteger=false, isLong=false, isNumber=false, isNumeric=false, isFloat=false, isDouble=false, vars=[CodegenProperty{openApiType='array', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='list[ConnectionAccount]', datatypeWithEnum='list[ConnectionAccount]', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='list', containerType='array', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='[
+                    budgea.models.connection_account.ConnectionAccount(
+                        balance = 1.337, 
+                        bic = '0', 
+                        bookmarked = 56, 
+                        coming = 1.337, 
+                        coming_balance = 1.337, 
+                        company_name = '0', 
+                        currency = budgea.models.currency.Currency(
+                            crypto = True, 
+                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = '0', 
+                            marketcap = 1.337, 
+                            name = '0', 
+                            precision = 56, 
+                            prefix = True, 
+                            symbol = '0', ), 
+                        deleted = '0', 
+                        disabled = True, 
+                        display = True, 
+                        error = '0', 
+                        formatted_balance = '0', 
+                        iban = '0', 
+                        id = 56, 
+                        id_connection = 56, 
+                        id_parent = 56, 
+                        id_source = 56, 
+                        id_type = 56, 
+                        id_user = 56, 
+                        investments = [
+                            budgea.models.user_investments.UserInvestments(
+                                investments = [
+                                    budgea.models.investment.Investment(
+                                        code = '0', 
+                                        code_type = '0', 
+                                        deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        description = '0', 
+                                        diff = 1.337, 
+                                        diff_percent = 1.337, 
+                                        id = 56, 
+                                        id_account = 56, 
+                                        id_security = 56, 
+                                        label = '0', 
+                                        last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        original_currency = budgea.models.currency.Currency(
+                                            crypto = True, 
+                                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            id = '0', 
+                                            marketcap = 1.337, 
+                                            name = '0', 
+                                            precision = 56, 
+                                            prefix = True, 
+                                            symbol = '0', ), 
+                                        original_diff = 1.337, 
+                                        original_unitprice = 1.337, 
+                                        original_unitvalue = 1.337, 
+                                        original_valuation = 1.337, 
+                                        portfolio_share = 1.337, 
+                                        prev_diff = 1.337, 
+                                        prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                        quantity = 1.337, 
+                                        source = '0', 
+                                        unitprice = 1.337, 
+                                        unitvalue = 1.337, 
+                                        valuation = 1.337, 
+                                        vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                    ], 
+                                total = 1.337, )
+                            ], 
+                        last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                            account_label = '0', 
+                            available_amount = 1.337, 
+                            contact_name = '0', 
+                            duration = 56, 
+                            id = 56, 
+                            id_account = 56, 
+                            insurance_label = '0', 
+                            last_payment_amount = 1.337, 
+                            last_payment_date = '0', 
+                            maturity_date = '0', 
+                            nb_payments_done = 56, 
+                            nb_payments_left = 56, 
+                            nb_payments_total = 56, 
+                            next_payment_amount = 1.337, 
+                            next_payment_date = '0', 
+                            rate = 1.337, 
+                            subscription_date = '0', 
+                            total_amount = 1.337, 
+                            type = '0', 
+                            used_amount = 1.337, ), 
+                        name = '0', 
+                        number = '0', 
+                        original_name = '0', 
+                        ownership = '0', 
+                        recipients = [
+                            budgea.models.recipient.Recipient(
+                                add_verified = True, 
+                                bank_name = '0', 
+                                category = '0', 
+                                deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                error = '0', 
+                                expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                fields = '0', 
+                                iban = '0', 
+                                id = 56, 
+                                id_account = 56, 
+                                id_target_account = 56, 
+                                label = '0', 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                state = '0', 
+                                time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                webid = '0', )
+                            ], 
+                        transactions = [
+                            budgea.models.transaction.Transaction(
+                                active = True, 
+                                application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                card = '0', 
+                                category = budgea.models.category.Category(
+                                    accountant_account = '0', 
+                                    color = '0', 
+                                    hidden = True, 
+                                    id = 56, 
+                                    id_logo = 56, 
+                                    id_parent_category = 56, 
+                                    id_parent_category_in_menu = 56, 
+                                    id_user = 56, 
+                                    income = True, 
+                                    name = '0', 
+                                    name_displayed = '0', 
+                                    refundable = True, ), 
+                                coming = True, 
+                                comment = '0', 
+                                commission = 1.337, 
+                                commission_currency = budgea.models.currency.Currency(
+                                    crypto = True, 
+                                    datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    id = '0', 
+                                    marketcap = 1.337, 
+                                    name = '0', 
+                                    precision = 56, 
+                                    prefix = True, 
+                                    symbol = '0', ), 
+                                counterparty = '0', 
+                                country = '0', 
+                                date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                documents_count = 56, 
+                                formatted_value = '0', 
+                                gross_value = 1.337, 
+                                id = 56, 
+                                id_account = 56, 
+                                id_category = 56, 
+                                id_cluster = 56, 
+                                informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                    total = 1.337, 
+                                    transactioninformations = [
+                                        budgea.models.transaction_information.TransactionInformation(
+                                            id = 56, 
+                                            id_transaction = 56, 
+                                            key = '0', 
+                                            value = '0', )
+                                        ], ), 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                nature = '0', 
+                                new = True, 
+                                nopurge = 56, 
+                                original_gross_value = 1.337, 
+                                original_value = 1.337, 
+                                original_wording = '0', 
+                                rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                simplified_wording = '0', 
+                                state = '0', 
+                                stemmed_wording = '0', 
+                                type = 'card', 
+                                value = 1.337, 
+                                vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                webid = '0', 
+                                wording = '0', )
+                            ], 
+                        transfers = [
+                            budgea.models.transfer.Transfer(
+                                account_balance = 1.337, 
+                                account_iban = '0', 
+                                amount = 1.337, 
+                                beneficiary_label = '0', 
+                                beneficiary_number = '0', 
+                                beneficiary_type = '0', 
+                                error = '0', 
+                                exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                fees = 1.337, 
+                                id = 56, 
+                                id_account = 56, 
+                                id_recipient = 56, 
+                                id_transaction = 56, 
+                                id_user = 56, 
+                                label = '0', 
+                                recipient_iban = '0', 
+                                register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                state = '0', 
+                                validate_mechanism = '0', 
+                                webid = '0', )
+                            ], 
+                        type = '0', 
+                        usage = '0', 
+                        webid = '0', )
+                    ]', jsonSchema='{
+  "type" : "array",
+  "items" : {
+    "$ref" : "#/components/schemas/ConnectionAccount"
+  }
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=false, isContainer=true, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=true, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=CodegenProperty{openApiType='ConnectionAccount', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='ConnectionAccount', datatypeWithEnum='ConnectionAccount', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='ConnectionAccount', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_account.ConnectionAccount(
+                    balance = 1.337, 
+                    bic = '0', 
+                    bookmarked = 56, 
+                    coming = 1.337, 
+                    coming_balance = 1.337, 
+                    company_name = '0', 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = True, 
+                    display = True, 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    iban = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_parent = 56, 
+                    id_source = 56, 
+                    id_type = 56, 
+                    id_user = 56, 
+                    investments = [
+                        budgea.models.user_investments.UserInvestments(
+                            investments = [
+                                budgea.models.investment.Investment(
+                                    code = '0', 
+                                    code_type = '0', 
+                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    description = '0', 
+                                    diff = 1.337, 
+                                    diff_percent = 1.337, 
+                                    id = 56, 
+                                    id_account = 56, 
+                                    id_security = 56, 
+                                    label = '0', 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    original_currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    original_diff = 1.337, 
+                                    original_unitprice = 1.337, 
+                                    original_unitvalue = 1.337, 
+                                    original_valuation = 1.337, 
+                                    portfolio_share = 1.337, 
+                                    prev_diff = 1.337, 
+                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                    quantity = 1.337, 
+                                    source = '0', 
+                                    unitprice = 1.337, 
+                                    unitvalue = 1.337, 
+                                    valuation = 1.337, 
+                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                ], 
+                            total = 1.337, )
+                        ], 
+                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                        account_label = '0', 
+                        available_amount = 1.337, 
+                        contact_name = '0', 
+                        duration = 56, 
+                        id = 56, 
+                        id_account = 56, 
+                        insurance_label = '0', 
+                        last_payment_amount = 1.337, 
+                        last_payment_date = '0', 
+                        maturity_date = '0', 
+                        nb_payments_done = 56, 
+                        nb_payments_left = 56, 
+                        nb_payments_total = 56, 
+                        next_payment_amount = 1.337, 
+                        next_payment_date = '0', 
+                        rate = 1.337, 
+                        subscription_date = '0', 
+                        total_amount = 1.337, 
+                        type = '0', 
+                        used_amount = 1.337, ), 
+                    name = '0', 
+                    number = '0', 
+                    original_name = '0', 
+                    ownership = '0', 
+                    recipients = [
+                        budgea.models.recipient.Recipient(
+                            add_verified = True, 
+                            bank_name = '0', 
+                            category = '0', 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            fields = '0', 
+                            iban = '0', 
+                            id = 56, 
+                            id_account = 56, 
+                            id_target_account = 56, 
+                            label = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            webid = '0', )
+                        ], 
+                    transactions = [
+                        budgea.models.transaction.Transaction(
+                            active = True, 
+                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            card = '0', 
+                            category = budgea.models.category.Category(
+                                accountant_account = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                id_logo = 56, 
+                                id_parent_category = 56, 
+                                id_parent_category_in_menu = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                name = '0', 
+                                name_displayed = '0', 
+                                refundable = True, ), 
+                            coming = True, 
+                            comment = '0', 
+                            commission = 1.337, 
+                            commission_currency = budgea.models.currency.Currency(
+                                crypto = True, 
+                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                id = '0', 
+                                marketcap = 1.337, 
+                                name = '0', 
+                                precision = 56, 
+                                prefix = True, 
+                                symbol = '0', ), 
+                            counterparty = '0', 
+                            country = '0', 
+                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            documents_count = 56, 
+                            formatted_value = '0', 
+                            gross_value = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_category = 56, 
+                            id_cluster = 56, 
+                            informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                total = 1.337, 
+                                transactioninformations = [
+                                    budgea.models.transaction_information.TransactionInformation(
+                                        id = 56, 
+                                        id_transaction = 56, 
+                                        key = '0', 
+                                        value = '0', )
+                                    ], ), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            nature = '0', 
+                            new = True, 
+                            nopurge = 56, 
+                            original_gross_value = 1.337, 
+                            original_value = 1.337, 
+                            original_wording = '0', 
+                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            simplified_wording = '0', 
+                            state = '0', 
+                            stemmed_wording = '0', 
+                            type = 'card', 
+                            value = 1.337, 
+                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            webid = '0', 
+                            wording = '0', )
+                        ], 
+                    transfers = [
+                        budgea.models.transfer.Transfer(
+                            account_balance = 1.337, 
+                            account_iban = '0', 
+                            amount = 1.337, 
+                            beneficiary_label = '0', 
+                            beneficiary_number = '0', 
+                            beneficiary_type = '0', 
+                            error = '0', 
+                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            fees = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_recipient = 56, 
+                            id_transaction = 56, 
+                            id_user = 56, 
+                            label = '0', 
+                            recipient_iban = '0', 
+                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            validate_mechanism = '0', 
+                            webid = '0', )
+                        ], 
+                    type = '0', 
+                    usage = '0', 
+                    webid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionAccount"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, mostInnerItems=CodegenProperty{openApiType='ConnectionAccount', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='ConnectionAccount', datatypeWithEnum='ConnectionAccount', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='ConnectionAccount', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_account.ConnectionAccount(
+                    balance = 1.337, 
+                    bic = '0', 
+                    bookmarked = 56, 
+                    coming = 1.337, 
+                    coming_balance = 1.337, 
+                    company_name = '0', 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = True, 
+                    display = True, 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    iban = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_parent = 56, 
+                    id_source = 56, 
+                    id_type = 56, 
+                    id_user = 56, 
+                    investments = [
+                        budgea.models.user_investments.UserInvestments(
+                            investments = [
+                                budgea.models.investment.Investment(
+                                    code = '0', 
+                                    code_type = '0', 
+                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    description = '0', 
+                                    diff = 1.337, 
+                                    diff_percent = 1.337, 
+                                    id = 56, 
+                                    id_account = 56, 
+                                    id_security = 56, 
+                                    label = '0', 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    original_currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    original_diff = 1.337, 
+                                    original_unitprice = 1.337, 
+                                    original_unitvalue = 1.337, 
+                                    original_valuation = 1.337, 
+                                    portfolio_share = 1.337, 
+                                    prev_diff = 1.337, 
+                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                    quantity = 1.337, 
+                                    source = '0', 
+                                    unitprice = 1.337, 
+                                    unitvalue = 1.337, 
+                                    valuation = 1.337, 
+                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                ], 
+                            total = 1.337, )
+                        ], 
+                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                        account_label = '0', 
+                        available_amount = 1.337, 
+                        contact_name = '0', 
+                        duration = 56, 
+                        id = 56, 
+                        id_account = 56, 
+                        insurance_label = '0', 
+                        last_payment_amount = 1.337, 
+                        last_payment_date = '0', 
+                        maturity_date = '0', 
+                        nb_payments_done = 56, 
+                        nb_payments_left = 56, 
+                        nb_payments_total = 56, 
+                        next_payment_amount = 1.337, 
+                        next_payment_date = '0', 
+                        rate = 1.337, 
+                        subscription_date = '0', 
+                        total_amount = 1.337, 
+                        type = '0', 
+                        used_amount = 1.337, ), 
+                    name = '0', 
+                    number = '0', 
+                    original_name = '0', 
+                    ownership = '0', 
+                    recipients = [
+                        budgea.models.recipient.Recipient(
+                            add_verified = True, 
+                            bank_name = '0', 
+                            category = '0', 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            fields = '0', 
+                            iban = '0', 
+                            id = 56, 
+                            id_account = 56, 
+                            id_target_account = 56, 
+                            label = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            webid = '0', )
+                        ], 
+                    transactions = [
+                        budgea.models.transaction.Transaction(
+                            active = True, 
+                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            card = '0', 
+                            category = budgea.models.category.Category(
+                                accountant_account = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                id_logo = 56, 
+                                id_parent_category = 56, 
+                                id_parent_category_in_menu = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                name = '0', 
+                                name_displayed = '0', 
+                                refundable = True, ), 
+                            coming = True, 
+                            comment = '0', 
+                            commission = 1.337, 
+                            commission_currency = budgea.models.currency.Currency(
+                                crypto = True, 
+                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                id = '0', 
+                                marketcap = 1.337, 
+                                name = '0', 
+                                precision = 56, 
+                                prefix = True, 
+                                symbol = '0', ), 
+                            counterparty = '0', 
+                            country = '0', 
+                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            documents_count = 56, 
+                            formatted_value = '0', 
+                            gross_value = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_category = 56, 
+                            id_cluster = 56, 
+                            informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                total = 1.337, 
+                                transactioninformations = [
+                                    budgea.models.transaction_information.TransactionInformation(
+                                        id = 56, 
+                                        id_transaction = 56, 
+                                        key = '0', 
+                                        value = '0', )
+                                    ], ), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            nature = '0', 
+                            new = True, 
+                            nopurge = 56, 
+                            original_gross_value = 1.337, 
+                            original_value = 1.337, 
+                            original_wording = '0', 
+                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            simplified_wording = '0', 
+                            state = '0', 
+                            stemmed_wording = '0', 
+                            type = 'card', 
+                            value = 1.337, 
+                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            webid = '0', 
+                            wording = '0', )
+                        ], 
+                    transfers = [
+                        budgea.models.transfer.Transfer(
+                            account_balance = 1.337, 
+                            account_iban = '0', 
+                            amount = 1.337, 
+                            beneficiary_label = '0', 
+                            beneficiary_number = '0', 
+                            beneficiary_type = '0', 
+                            error = '0', 
+                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            fees = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_recipient = 56, 
+                            id_transaction = 56, 
+                            id_user = 56, 
+                            label = '0', 
+                            recipient_iban = '0', 
+                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            validate_mechanism = '0', 
+                            webid = '0', )
+                        ], 
+                    type = '0', 
+                    usage = '0', 
+                    webid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionAccount"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='boolean', baseName='active', complexType='null', getter='getActive', setter='setActive', description='This connection is active and will be automatically synced', dataType='bool', datatypeWithEnum='bool', dataFormat='null', name='active', min='null', max='null', defaultValue='True', defaultValueWithParam=' = data.active;', baseType='bool', containerType='null', title='null', unescapedDescription='This connection is active and will be automatically synced', maxLength=null, minLength=null, pattern='null', example='True', jsonSchema='{
+  "type" : "boolean",
+  "description" : "This connection is active and will be automatically synced",
+  "default" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=true, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Active', nameInSnakeCase='ACTIVE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionBank', baseName='bank', complexType='ConnectionBank', getter='getBank', setter='setBank', description='null', dataType='ConnectionBank', datatypeWithEnum='ConnectionBank', dataFormat='null', name='bank', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.bank;', baseType='ConnectionBank', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_bank.ConnectionBank(
+                    account_types = [
+                        '0'
+                        ], 
+                    auth_mechanism = '0', 
+                    available_auth_mechanisms = [
+                        '0'
+                        ], 
+                    available_transfer_mechanisms = [
+                        '0'
+                        ], 
+                    beta = True, 
+                    capabilities = [
+                        '0'
+                        ], 
+                    categories = [
+                        '0'
+                        ], 
+                    charged = True, 
+                    code = '0', 
+                    color = '0', 
+                    document_type = [
+                        '0'
+                        ], 
+                    documents_type = [
+                        '0'
+                        ], 
+                    hidden = True, 
+                    id = 56, 
+                    months_to_fetch = '0', 
+                    name = '0', 
+                    restricted = True, 
+                    siret = '0', 
+                    slug = '0', 
+                    sync_frequency = '0', 
+                    transfer_beneficiary_types = [
+                        '0'
+                        ], 
+                    urls = [
+                        '0'
+                        ], 
+                    uuid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionBank"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Bank', nameInSnakeCase='BANK', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionBank', baseName='connector', complexType='ConnectionBank', getter='getConnector', setter='setConnector', description='null', dataType='ConnectionBank', datatypeWithEnum='ConnectionBank', dataFormat='null', name='connector', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.connector;', baseType='ConnectionBank', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_bank.ConnectionBank(
+                    account_types = [
+                        '0'
+                        ], 
+                    auth_mechanism = '0', 
+                    available_auth_mechanisms = [
+                        '0'
+                        ], 
+                    available_transfer_mechanisms = [
+                        '0'
+                        ], 
+                    beta = True, 
+                    capabilities = [
+                        '0'
+                        ], 
+                    categories = [
+                        '0'
+                        ], 
+                    charged = True, 
+                    code = '0', 
+                    color = '0', 
+                    document_type = [
+                        '0'
+                        ], 
+                    documents_type = [
+                        '0'
+                        ], 
+                    hidden = True, 
+                    id = 56, 
+                    months_to_fetch = '0', 
+                    name = '0', 
+                    restricted = True, 
+                    siret = '0', 
+                    slug = '0', 
+                    sync_frequency = '0', 
+                    transfer_beneficiary_types = [
+                        '0'
+                        ], 
+                    urls = [
+                        '0'
+                        ], 
+                    uuid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionBank"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Connector', nameInSnakeCase='CONNECTOR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='connector_uuid', complexType='null', getter='getConnectorUuid', setter='setConnectorUuid', description='uuid of the connector (replaces id_connector)', dataType='str', datatypeWithEnum='str', dataFormat='null', name='connector_uuid', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.connector_uuid;', baseType='str', containerType='null', title='null', unescapedDescription='uuid of the connector (replaces id_connector)', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "description" : "uuid of the connector (replaces id_connector)"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='ConnectorUuid', nameInSnakeCase='CONNECTOR_UUID', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='created', complexType='null', getter='getCreated', setter='setCreated', description='Creation date', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='created', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.created;', baseType='datetime', containerType='null', title='null', unescapedDescription='Creation date', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "type" : "string",
+  "description" : "Creation date",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Created', nameInSnakeCase='CREATED', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='error', complexType='null', getter='getError', setter='setError', description='null', dataType='str', datatypeWithEnum='str', dataFormat='null', name='error', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.error;', baseType='str', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Error', nameInSnakeCase='ERROR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='error_message', complexType='null', getter='getErrorMessage', setter='setErrorMessage', description='If fail, error message received from bank or provider', dataType='str', datatypeWithEnum='str', dataFormat='null', name='error_message', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.error_message;', baseType='str', containerType='null', title='null', unescapedDescription='If fail, error message received from bank or provider', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "description" : "If fail, error message received from bank or provider",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='ErrorMessage', nameInSnakeCase='ERROR_MESSAGE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='expire', complexType='null', getter='getExpire', setter='setExpire', description='Expiration of the connection source. Used to purge the connection in case completion was not finished', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='expire', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.expire;', baseType='datetime', containerType='null', title='null', unescapedDescription='Expiration of the connection source. Used to purge the connection in case completion was not finished', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "type" : "string",
+  "description" : "Expiration of the connection source. Used to purge the connection in case completion was not finished",
+  "format" : "date-time",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Expire', nameInSnakeCase='EXPIRE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id', complexType='null', getter='getId', setter='setId', description='ID of connection', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id;', baseType='int', containerType='null', title='null', unescapedDescription='ID of connection', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of connection"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Id', nameInSnakeCase='ID', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_bank', complexType='null', getter='getIdBank', setter='setIdBank', description='null', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_bank', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_bank;', baseType='int', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdBank', nameInSnakeCase='ID_BANK', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_connector', complexType='null', getter='getIdConnector', setter='setIdConnector', description='ID of the related connector', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_connector', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_connector;', baseType='int', containerType='null', title='null', unescapedDescription='ID of the related connector', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of the related connector"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdConnector', nameInSnakeCase='ID_CONNECTOR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_provider', complexType='null', getter='getIdProvider', setter='setIdProvider', description='null', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_provider', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_provider;', baseType='int', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdProvider', nameInSnakeCase='ID_PROVIDER', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_user', complexType='null', getter='getIdUser', setter='setIdUser', description='ID of the related user', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_user', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_user;', baseType='int', containerType='null', title='null', unescapedDescription='ID of the related user', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of the related user"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdUser', nameInSnakeCase='ID_USER', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionInformations', baseName='informations', complexType='ConnectionInformations', getter='getInformations', setter='setInformations', description='null', dataType='ConnectionInformations', datatypeWithEnum='ConnectionInformations', dataFormat='null', name='informations', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.informations;', baseType='ConnectionInformations', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_informations.ConnectionInformations(
+                    connections = [
+                        budgea.models.connection.Connection(
+                            accounts = [
+                                budgea.models.connection_account.ConnectionAccount(
+                                    balance = 1.337, 
+                                    bic = '0', 
+                                    bookmarked = 56, 
+                                    coming = 1.337, 
+                                    coming_balance = 1.337, 
+                                    company_name = '0', 
+                                    currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    deleted = '0', 
+                                    disabled = True, 
+                                    display = True, 
+                                    error = '0', 
+                                    formatted_balance = '0', 
+                                    iban = '0', 
+                                    id = 56, 
+                                    id_connection = 56, 
+                                    id_parent = 56, 
+                                    id_source = 56, 
+                                    id_type = 56, 
+                                    id_user = 56, 
+                                    investments = [
+                                        budgea.models.user_investments.UserInvestments(
+                                            investments = [
+                                                budgea.models.investment.Investment(
+                                                    code = '0', 
+                                                    code_type = '0', 
+                                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                    description = '0', 
+                                                    diff = 1.337, 
+                                                    diff_percent = 1.337, 
+                                                    id = 56, 
+                                                    id_account = 56, 
+                                                    id_security = 56, 
+                                                    label = '0', 
+                                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                    original_currency = budgea.models.currency.Currency(
+                                                        crypto = True, 
+                                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                        id = '0', 
+                                                        marketcap = 1.337, 
+                                                        name = '0', 
+                                                        precision = 56, 
+                                                        prefix = True, 
+                                                        symbol = '0', ), 
+                                                    original_diff = 1.337, 
+                                                    original_unitprice = 1.337, 
+                                                    original_unitvalue = 1.337, 
+                                                    original_valuation = 1.337, 
+                                                    portfolio_share = 1.337, 
+                                                    prev_diff = 1.337, 
+                                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                                    quantity = 1.337, 
+                                                    source = '0', 
+                                                    unitprice = 1.337, 
+                                                    unitvalue = 1.337, 
+                                                    valuation = 1.337, 
+                                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                                ], 
+                                            total = 1.337, )
+                                        ], 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                                        account_label = '0', 
+                                        available_amount = 1.337, 
+                                        contact_name = '0', 
+                                        duration = 56, 
+                                        id = 56, 
+                                        id_account = 56, 
+                                        insurance_label = '0', 
+                                        last_payment_amount = 1.337, 
+                                        last_payment_date = '0', 
+                                        maturity_date = '0', 
+                                        nb_payments_done = 56, 
+                                        nb_payments_left = 56, 
+                                        nb_payments_total = 56, 
+                                        next_payment_amount = 1.337, 
+                                        next_payment_date = '0', 
+                                        rate = 1.337, 
+                                        subscription_date = '0', 
+                                        total_amount = 1.337, 
+                                        type = '0', 
+                                        used_amount = 1.337, ), 
+                                    name = '0', 
+                                    number = '0', 
+                                    original_name = '0', 
+                                    ownership = '0', 
+                                    recipients = [
+                                        budgea.models.recipient.Recipient(
+                                            add_verified = True, 
+                                            bank_name = '0', 
+                                            category = '0', 
+                                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            error = '0', 
+                                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            fields = '0', 
+                                            iban = '0', 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_target_account = 56, 
+                                            label = '0', 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            state = '0', 
+                                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            webid = '0', )
+                                        ], 
+                                    transactions = [
+                                        budgea.models.transaction.Transaction(
+                                            active = True, 
+                                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            card = '0', 
+                                            category = budgea.models.category.Category(
+                                                accountant_account = '0', 
+                                                color = '0', 
+                                                hidden = True, 
+                                                id = 56, 
+                                                id_logo = 56, 
+                                                id_parent_category = 56, 
+                                                id_parent_category_in_menu = 56, 
+                                                id_user = 56, 
+                                                income = True, 
+                                                name = '0', 
+                                                name_displayed = '0', 
+                                                refundable = True, ), 
+                                            coming = True, 
+                                            comment = '0', 
+                                            commission = 1.337, 
+                                            commission_currency = budgea.models.currency.Currency(
+                                                crypto = True, 
+                                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                id = '0', 
+                                                marketcap = 1.337, 
+                                                name = '0', 
+                                                precision = 56, 
+                                                prefix = True, 
+                                                symbol = '0', ), 
+                                            counterparty = '0', 
+                                            country = '0', 
+                                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            documents_count = 56, 
+                                            formatted_value = '0', 
+                                            gross_value = 1.337, 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_category = 56, 
+                                            id_cluster = 56, 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            nature = '0', 
+                                            new = True, 
+                                            nopurge = 56, 
+                                            original_gross_value = 1.337, 
+                                            original_value = 1.337, 
+                                            original_wording = '0', 
+                                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            simplified_wording = '0', 
+                                            state = '0', 
+                                            stemmed_wording = '0', 
+                                            type = 'card', 
+                                            value = 1.337, 
+                                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            webid = '0', 
+                                            wording = '0', )
+                                        ], 
+                                    transfers = [
+                                        budgea.models.transfer.Transfer(
+                                            account_balance = 1.337, 
+                                            account_iban = '0', 
+                                            amount = 1.337, 
+                                            beneficiary_label = '0', 
+                                            beneficiary_number = '0', 
+                                            beneficiary_type = '0', 
+                                            error = '0', 
+                                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            fees = 1.337, 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_recipient = 56, 
+                                            id_transaction = 56, 
+                                            id_user = 56, 
+                                            label = '0', 
+                                            recipient_iban = '0', 
+                                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            state = '0', 
+                                            validate_mechanism = '0', 
+                                            webid = '0', )
+                                        ], 
+                                    type = '0', 
+                                    usage = '0', 
+                                    webid = '0', )
+                                ], 
+                            active = True, 
+                            bank = budgea.models.connection_bank.ConnectionBank(
+                                account_types = [
+                                    '0'
+                                    ], 
+                                auth_mechanism = '0', 
+                                available_auth_mechanisms = [
+                                    '0'
+                                    ], 
+                                available_transfer_mechanisms = [
+                                    '0'
+                                    ], 
+                                beta = True, 
+                                capabilities = [
+                                    '0'
+                                    ], 
+                                categories = [
+                                    '0'
+                                    ], 
+                                charged = True, 
+                                code = '0', 
+                                color = '0', 
+                                document_type = [
+                                    '0'
+                                    ], 
+                                documents_type = [
+                                    '0'
+                                    ], 
+                                hidden = True, 
+                                id = 56, 
+                                months_to_fetch = '0', 
+                                name = '0', 
+                                restricted = True, 
+                                siret = '0', 
+                                slug = '0', 
+                                sync_frequency = '0', 
+                                transfer_beneficiary_types = [
+                                    '0'
+                                    ], 
+                                urls = [
+                                    '0'
+                                    ], 
+                                uuid = '0', ), 
+                            connector = budgea.models.connection_bank.ConnectionBank(
+                                auth_mechanism = '0', 
+                                beta = True, 
+                                charged = True, 
+                                code = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                months_to_fetch = '0', 
+                                name = '0', 
+                                restricted = True, 
+                                siret = '0', 
+                                slug = '0', 
+                                sync_frequency = '0', 
+                                uuid = '0', ), 
+                            connector_uuid = '0', 
+                            created = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            error_message = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = 56, 
+                            id_bank = 56, 
+                            id_connector = 56, 
+                            id_provider = 56, 
+                            id_user = 56, 
+                            last_push = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            next_try = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            subscriptions = [
+                                budgea.models.connection_subscription.ConnectionSubscription(
+                                    balance = 1.337, 
+                                    deleted = '0', 
+                                    disabled = '0', 
+                                    documents = [
+                                        budgea.models.document.Document(
+                                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            has_file_on_website = True, 
+                                            id = 56, 
+                                            id_category = 56, 
+                                            id_file = 56, 
+                                            id_subscription = 56, 
+                                            id_thumbnail = 56, 
+                                            id_type = 56, 
+                                            id_user = 56, 
+                                            income = True, 
+                                            issuer = '0', 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            name = '0', 
+                                            number = '0', 
+                                            readonly = True, 
+                                            thumb_url = '0', 
+                                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            total_amount = 1.337, 
+                                            type = 'statement', 
+                                            untaxed_amount = 1.337, 
+                                            url = '0', 
+                                            vat = 1.337, )
+                                        ], 
+                                    error = '0', 
+                                    formatted_balance = '0', 
+                                    id = 56, 
+                                    id_connection = 56, 
+                                    id_source = 56, 
+                                    id_user = 56, 
+                                    label = '0', 
+                                    last_update = '0', 
+                                    number = '0', 
+                                    renewdate = '0', 
+                                    subscriber = '0', 
+                                    validity = '0', )
+                                ], )
+                        ], 
+                    total = 56, )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionInformations"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Informations', nameInSnakeCase='INFORMATIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='last_push', complexType='null', getter='getLastPush', setter='setLastPush', description='Last successful push', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='last_push', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.last_push;', baseType='datetime', containerType='null', title='last_push', unescapedDescription='Last successful push', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "last_push",
+  "type" : "string",
+  "description" : "Last successful push",
+  "format" : "date-time",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='LastPush', nameInSnakeCase='LAST_PUSH', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='last_update', complexType='null', getter='getLastUpdate', setter='setLastUpdate', description='Last successful update', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='last_update', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.last_update;', baseType='datetime', containerType='null', title='last_update', unescapedDescription='Last successful update', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "last_update",
+  "type" : "string",
+  "description" : "Last successful update",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='LastUpdate', nameInSnakeCase='LAST_UPDATE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='next_try', complexType='null', getter='getNextTry', setter='setNextTry', description='Date of next synchronization', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='next_try', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.next_try;', baseType='datetime', containerType='null', title='next_try', unescapedDescription='Date of next synchronization', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "next_try",
+  "type" : "string",
+  "description" : "Date of next synchronization",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='NextTry', nameInSnakeCase='NEXT_TRY', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='state', complexType='null', getter='getState', setter='setState', description='null', dataType='str', datatypeWithEnum='str', dataFormat='null', name='state', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.state;', baseType='str', containerType='null', title='state', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "title" : "state",
+  "type" : "string",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='State', nameInSnakeCase='STATE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='array', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='list[ConnectionSubscription]', datatypeWithEnum='list[ConnectionSubscription]', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='list', containerType='array', title='subscriptions', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='[
+                    budgea.models.connection_subscription.ConnectionSubscription(
+                        balance = 1.337, 
+                        currency = budgea.models.currency.Currency(
+                            crypto = True, 
+                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = '0', 
+                            marketcap = 1.337, 
+                            name = '0', 
+                            precision = 56, 
+                            prefix = True, 
+                            symbol = '0', ), 
+                        deleted = '0', 
+                        disabled = '0', 
+                        documents = [
+                            budgea.models.document.Document(
+                                date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                has_file_on_website = True, 
+                                id = 56, 
+                                id_category = 56, 
+                                id_file = 56, 
+                                id_subscription = 56, 
+                                id_thumbnail = 56, 
+                                id_type = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                issuer = '0', 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                name = '0', 
+                                number = '0', 
+                                readonly = True, 
+                                thumb_url = '0', 
+                                timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                total_amount = 1.337, 
+                                type = 'statement', 
+                                untaxed_amount = 1.337, 
+                                url = '0', 
+                                vat = 1.337, )
+                            ], 
+                        error = '0', 
+                        formatted_balance = '0', 
+                        id = 56, 
+                        id_connection = 56, 
+                        id_source = 56, 
+                        id_user = 56, 
+                        label = '0', 
+                        last_update = '0', 
+                        number = '0', 
+                        renewdate = '0', 
+                        subscriber = '0', 
+                        validity = '0', )
+                    ]', jsonSchema='{
+  "title" : "subscriptions",
+  "type" : "array",
+  "items" : {
+    "$ref" : "#/components/schemas/ConnectionSubscription"
+  }
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=false, isContainer=true, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=true, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=CodegenProperty{openApiType='ConnectionSubscription', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='ConnectionSubscription', datatypeWithEnum='ConnectionSubscription', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='ConnectionSubscription', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_subscription.ConnectionSubscription(
+                    balance = 1.337, 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = '0', 
+                    documents = [
+                        budgea.models.document.Document(
+                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            has_file_on_website = True, 
+                            id = 56, 
+                            id_category = 56, 
+                            id_file = 56, 
+                            id_subscription = 56, 
+                            id_thumbnail = 56, 
+                            id_type = 56, 
+                            id_user = 56, 
+                            income = True, 
+                            issuer = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            name = '0', 
+                            number = '0', 
+                            readonly = True, 
+                            thumb_url = '0', 
+                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            total_amount = 1.337, 
+                            type = 'statement', 
+                            untaxed_amount = 1.337, 
+                            url = '0', 
+                            vat = 1.337, )
+                        ], 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_source = 56, 
+                    id_user = 56, 
+                    label = '0', 
+                    last_update = '0', 
+                    number = '0', 
+                    renewdate = '0', 
+                    subscriber = '0', 
+                    validity = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionSubscription"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, mostInnerItems=CodegenProperty{openApiType='ConnectionSubscription', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='ConnectionSubscription', datatypeWithEnum='ConnectionSubscription', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='ConnectionSubscription', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_subscription.ConnectionSubscription(
+                    balance = 1.337, 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = '0', 
+                    documents = [
+                        budgea.models.document.Document(
+                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            has_file_on_website = True, 
+                            id = 56, 
+                            id_category = 56, 
+                            id_file = 56, 
+                            id_subscription = 56, 
+                            id_thumbnail = 56, 
+                            id_type = 56, 
+                            id_user = 56, 
+                            income = True, 
+                            issuer = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            name = '0', 
+                            number = '0', 
+                            readonly = True, 
+                            thumb_url = '0', 
+                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            total_amount = 1.337, 
+                            type = 'statement', 
+                            untaxed_amount = 1.337, 
+                            url = '0', 
+                            vat = 1.337, )
+                        ], 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_source = 56, 
+                    id_user = 56, 
+                    label = '0', 
+                    last_update = '0', 
+                    number = '0', 
+                    renewdate = '0', 
+                    subscriber = '0', 
+                    validity = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionSubscription"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}], allVars=[CodegenProperty{openApiType='array', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='list[ConnectionAccount]', datatypeWithEnum='list[ConnectionAccount]', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='list', containerType='array', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='[
+                    budgea.models.connection_account.ConnectionAccount(
+                        balance = 1.337, 
+                        bic = '0', 
+                        bookmarked = 56, 
+                        coming = 1.337, 
+                        coming_balance = 1.337, 
+                        company_name = '0', 
+                        currency = budgea.models.currency.Currency(
+                            crypto = True, 
+                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = '0', 
+                            marketcap = 1.337, 
+                            name = '0', 
+                            precision = 56, 
+                            prefix = True, 
+                            symbol = '0', ), 
+                        deleted = '0', 
+                        disabled = True, 
+                        display = True, 
+                        error = '0', 
+                        formatted_balance = '0', 
+                        iban = '0', 
+                        id = 56, 
+                        id_connection = 56, 
+                        id_parent = 56, 
+                        id_source = 56, 
+                        id_type = 56, 
+                        id_user = 56, 
+                        investments = [
+                            budgea.models.user_investments.UserInvestments(
+                                investments = [
+                                    budgea.models.investment.Investment(
+                                        code = '0', 
+                                        code_type = '0', 
+                                        deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        description = '0', 
+                                        diff = 1.337, 
+                                        diff_percent = 1.337, 
+                                        id = 56, 
+                                        id_account = 56, 
+                                        id_security = 56, 
+                                        label = '0', 
+                                        last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        original_currency = budgea.models.currency.Currency(
+                                            crypto = True, 
+                                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            id = '0', 
+                                            marketcap = 1.337, 
+                                            name = '0', 
+                                            precision = 56, 
+                                            prefix = True, 
+                                            symbol = '0', ), 
+                                        original_diff = 1.337, 
+                                        original_unitprice = 1.337, 
+                                        original_unitvalue = 1.337, 
+                                        original_valuation = 1.337, 
+                                        portfolio_share = 1.337, 
+                                        prev_diff = 1.337, 
+                                        prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                        quantity = 1.337, 
+                                        source = '0', 
+                                        unitprice = 1.337, 
+                                        unitvalue = 1.337, 
+                                        valuation = 1.337, 
+                                        vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                    ], 
+                                total = 1.337, )
+                            ], 
+                        last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                            account_label = '0', 
+                            available_amount = 1.337, 
+                            contact_name = '0', 
+                            duration = 56, 
+                            id = 56, 
+                            id_account = 56, 
+                            insurance_label = '0', 
+                            last_payment_amount = 1.337, 
+                            last_payment_date = '0', 
+                            maturity_date = '0', 
+                            nb_payments_done = 56, 
+                            nb_payments_left = 56, 
+                            nb_payments_total = 56, 
+                            next_payment_amount = 1.337, 
+                            next_payment_date = '0', 
+                            rate = 1.337, 
+                            subscription_date = '0', 
+                            total_amount = 1.337, 
+                            type = '0', 
+                            used_amount = 1.337, ), 
+                        name = '0', 
+                        number = '0', 
+                        original_name = '0', 
+                        ownership = '0', 
+                        recipients = [
+                            budgea.models.recipient.Recipient(
+                                add_verified = True, 
+                                bank_name = '0', 
+                                category = '0', 
+                                deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                error = '0', 
+                                expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                fields = '0', 
+                                iban = '0', 
+                                id = 56, 
+                                id_account = 56, 
+                                id_target_account = 56, 
+                                label = '0', 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                state = '0', 
+                                time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                webid = '0', )
+                            ], 
+                        transactions = [
+                            budgea.models.transaction.Transaction(
+                                active = True, 
+                                application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                card = '0', 
+                                category = budgea.models.category.Category(
+                                    accountant_account = '0', 
+                                    color = '0', 
+                                    hidden = True, 
+                                    id = 56, 
+                                    id_logo = 56, 
+                                    id_parent_category = 56, 
+                                    id_parent_category_in_menu = 56, 
+                                    id_user = 56, 
+                                    income = True, 
+                                    name = '0', 
+                                    name_displayed = '0', 
+                                    refundable = True, ), 
+                                coming = True, 
+                                comment = '0', 
+                                commission = 1.337, 
+                                commission_currency = budgea.models.currency.Currency(
+                                    crypto = True, 
+                                    datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    id = '0', 
+                                    marketcap = 1.337, 
+                                    name = '0', 
+                                    precision = 56, 
+                                    prefix = True, 
+                                    symbol = '0', ), 
+                                counterparty = '0', 
+                                country = '0', 
+                                date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                documents_count = 56, 
+                                formatted_value = '0', 
+                                gross_value = 1.337, 
+                                id = 56, 
+                                id_account = 56, 
+                                id_category = 56, 
+                                id_cluster = 56, 
+                                informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                    total = 1.337, 
+                                    transactioninformations = [
+                                        budgea.models.transaction_information.TransactionInformation(
+                                            id = 56, 
+                                            id_transaction = 56, 
+                                            key = '0', 
+                                            value = '0', )
+                                        ], ), 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                nature = '0', 
+                                new = True, 
+                                nopurge = 56, 
+                                original_gross_value = 1.337, 
+                                original_value = 1.337, 
+                                original_wording = '0', 
+                                rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                simplified_wording = '0', 
+                                state = '0', 
+                                stemmed_wording = '0', 
+                                type = 'card', 
+                                value = 1.337, 
+                                vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                webid = '0', 
+                                wording = '0', )
+                            ], 
+                        transfers = [
+                            budgea.models.transfer.Transfer(
+                                account_balance = 1.337, 
+                                account_iban = '0', 
+                                amount = 1.337, 
+                                beneficiary_label = '0', 
+                                beneficiary_number = '0', 
+                                beneficiary_type = '0', 
+                                error = '0', 
+                                exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                fees = 1.337, 
+                                id = 56, 
+                                id_account = 56, 
+                                id_recipient = 56, 
+                                id_transaction = 56, 
+                                id_user = 56, 
+                                label = '0', 
+                                recipient_iban = '0', 
+                                register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                state = '0', 
+                                validate_mechanism = '0', 
+                                webid = '0', )
+                            ], 
+                        type = '0', 
+                        usage = '0', 
+                        webid = '0', )
+                    ]', jsonSchema='{
+  "type" : "array",
+  "items" : {
+    "$ref" : "#/components/schemas/ConnectionAccount"
+  }
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=false, isContainer=true, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=true, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=CodegenProperty{openApiType='ConnectionAccount', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='ConnectionAccount', datatypeWithEnum='ConnectionAccount', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='ConnectionAccount', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_account.ConnectionAccount(
+                    balance = 1.337, 
+                    bic = '0', 
+                    bookmarked = 56, 
+                    coming = 1.337, 
+                    coming_balance = 1.337, 
+                    company_name = '0', 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = True, 
+                    display = True, 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    iban = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_parent = 56, 
+                    id_source = 56, 
+                    id_type = 56, 
+                    id_user = 56, 
+                    investments = [
+                        budgea.models.user_investments.UserInvestments(
+                            investments = [
+                                budgea.models.investment.Investment(
+                                    code = '0', 
+                                    code_type = '0', 
+                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    description = '0', 
+                                    diff = 1.337, 
+                                    diff_percent = 1.337, 
+                                    id = 56, 
+                                    id_account = 56, 
+                                    id_security = 56, 
+                                    label = '0', 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    original_currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    original_diff = 1.337, 
+                                    original_unitprice = 1.337, 
+                                    original_unitvalue = 1.337, 
+                                    original_valuation = 1.337, 
+                                    portfolio_share = 1.337, 
+                                    prev_diff = 1.337, 
+                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                    quantity = 1.337, 
+                                    source = '0', 
+                                    unitprice = 1.337, 
+                                    unitvalue = 1.337, 
+                                    valuation = 1.337, 
+                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                ], 
+                            total = 1.337, )
+                        ], 
+                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                        account_label = '0', 
+                        available_amount = 1.337, 
+                        contact_name = '0', 
+                        duration = 56, 
+                        id = 56, 
+                        id_account = 56, 
+                        insurance_label = '0', 
+                        last_payment_amount = 1.337, 
+                        last_payment_date = '0', 
+                        maturity_date = '0', 
+                        nb_payments_done = 56, 
+                        nb_payments_left = 56, 
+                        nb_payments_total = 56, 
+                        next_payment_amount = 1.337, 
+                        next_payment_date = '0', 
+                        rate = 1.337, 
+                        subscription_date = '0', 
+                        total_amount = 1.337, 
+                        type = '0', 
+                        used_amount = 1.337, ), 
+                    name = '0', 
+                    number = '0', 
+                    original_name = '0', 
+                    ownership = '0', 
+                    recipients = [
+                        budgea.models.recipient.Recipient(
+                            add_verified = True, 
+                            bank_name = '0', 
+                            category = '0', 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            fields = '0', 
+                            iban = '0', 
+                            id = 56, 
+                            id_account = 56, 
+                            id_target_account = 56, 
+                            label = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            webid = '0', )
+                        ], 
+                    transactions = [
+                        budgea.models.transaction.Transaction(
+                            active = True, 
+                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            card = '0', 
+                            category = budgea.models.category.Category(
+                                accountant_account = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                id_logo = 56, 
+                                id_parent_category = 56, 
+                                id_parent_category_in_menu = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                name = '0', 
+                                name_displayed = '0', 
+                                refundable = True, ), 
+                            coming = True, 
+                            comment = '0', 
+                            commission = 1.337, 
+                            commission_currency = budgea.models.currency.Currency(
+                                crypto = True, 
+                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                id = '0', 
+                                marketcap = 1.337, 
+                                name = '0', 
+                                precision = 56, 
+                                prefix = True, 
+                                symbol = '0', ), 
+                            counterparty = '0', 
+                            country = '0', 
+                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            documents_count = 56, 
+                            formatted_value = '0', 
+                            gross_value = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_category = 56, 
+                            id_cluster = 56, 
+                            informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                total = 1.337, 
+                                transactioninformations = [
+                                    budgea.models.transaction_information.TransactionInformation(
+                                        id = 56, 
+                                        id_transaction = 56, 
+                                        key = '0', 
+                                        value = '0', )
+                                    ], ), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            nature = '0', 
+                            new = True, 
+                            nopurge = 56, 
+                            original_gross_value = 1.337, 
+                            original_value = 1.337, 
+                            original_wording = '0', 
+                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            simplified_wording = '0', 
+                            state = '0', 
+                            stemmed_wording = '0', 
+                            type = 'card', 
+                            value = 1.337, 
+                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            webid = '0', 
+                            wording = '0', )
+                        ], 
+                    transfers = [
+                        budgea.models.transfer.Transfer(
+                            account_balance = 1.337, 
+                            account_iban = '0', 
+                            amount = 1.337, 
+                            beneficiary_label = '0', 
+                            beneficiary_number = '0', 
+                            beneficiary_type = '0', 
+                            error = '0', 
+                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            fees = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_recipient = 56, 
+                            id_transaction = 56, 
+                            id_user = 56, 
+                            label = '0', 
+                            recipient_iban = '0', 
+                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            validate_mechanism = '0', 
+                            webid = '0', )
+                        ], 
+                    type = '0', 
+                    usage = '0', 
+                    webid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionAccount"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, mostInnerItems=CodegenProperty{openApiType='ConnectionAccount', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='ConnectionAccount', datatypeWithEnum='ConnectionAccount', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='ConnectionAccount', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_account.ConnectionAccount(
+                    balance = 1.337, 
+                    bic = '0', 
+                    bookmarked = 56, 
+                    coming = 1.337, 
+                    coming_balance = 1.337, 
+                    company_name = '0', 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = True, 
+                    display = True, 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    iban = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_parent = 56, 
+                    id_source = 56, 
+                    id_type = 56, 
+                    id_user = 56, 
+                    investments = [
+                        budgea.models.user_investments.UserInvestments(
+                            investments = [
+                                budgea.models.investment.Investment(
+                                    code = '0', 
+                                    code_type = '0', 
+                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    description = '0', 
+                                    diff = 1.337, 
+                                    diff_percent = 1.337, 
+                                    id = 56, 
+                                    id_account = 56, 
+                                    id_security = 56, 
+                                    label = '0', 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    original_currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    original_diff = 1.337, 
+                                    original_unitprice = 1.337, 
+                                    original_unitvalue = 1.337, 
+                                    original_valuation = 1.337, 
+                                    portfolio_share = 1.337, 
+                                    prev_diff = 1.337, 
+                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                    quantity = 1.337, 
+                                    source = '0', 
+                                    unitprice = 1.337, 
+                                    unitvalue = 1.337, 
+                                    valuation = 1.337, 
+                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                ], 
+                            total = 1.337, )
+                        ], 
+                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                        account_label = '0', 
+                        available_amount = 1.337, 
+                        contact_name = '0', 
+                        duration = 56, 
+                        id = 56, 
+                        id_account = 56, 
+                        insurance_label = '0', 
+                        last_payment_amount = 1.337, 
+                        last_payment_date = '0', 
+                        maturity_date = '0', 
+                        nb_payments_done = 56, 
+                        nb_payments_left = 56, 
+                        nb_payments_total = 56, 
+                        next_payment_amount = 1.337, 
+                        next_payment_date = '0', 
+                        rate = 1.337, 
+                        subscription_date = '0', 
+                        total_amount = 1.337, 
+                        type = '0', 
+                        used_amount = 1.337, ), 
+                    name = '0', 
+                    number = '0', 
+                    original_name = '0', 
+                    ownership = '0', 
+                    recipients = [
+                        budgea.models.recipient.Recipient(
+                            add_verified = True, 
+                            bank_name = '0', 
+                            category = '0', 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            fields = '0', 
+                            iban = '0', 
+                            id = 56, 
+                            id_account = 56, 
+                            id_target_account = 56, 
+                            label = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            webid = '0', )
+                        ], 
+                    transactions = [
+                        budgea.models.transaction.Transaction(
+                            active = True, 
+                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            card = '0', 
+                            category = budgea.models.category.Category(
+                                accountant_account = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                id_logo = 56, 
+                                id_parent_category = 56, 
+                                id_parent_category_in_menu = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                name = '0', 
+                                name_displayed = '0', 
+                                refundable = True, ), 
+                            coming = True, 
+                            comment = '0', 
+                            commission = 1.337, 
+                            commission_currency = budgea.models.currency.Currency(
+                                crypto = True, 
+                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                id = '0', 
+                                marketcap = 1.337, 
+                                name = '0', 
+                                precision = 56, 
+                                prefix = True, 
+                                symbol = '0', ), 
+                            counterparty = '0', 
+                            country = '0', 
+                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            documents_count = 56, 
+                            formatted_value = '0', 
+                            gross_value = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_category = 56, 
+                            id_cluster = 56, 
+                            informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                total = 1.337, 
+                                transactioninformations = [
+                                    budgea.models.transaction_information.TransactionInformation(
+                                        id = 56, 
+                                        id_transaction = 56, 
+                                        key = '0', 
+                                        value = '0', )
+                                    ], ), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            nature = '0', 
+                            new = True, 
+                            nopurge = 56, 
+                            original_gross_value = 1.337, 
+                            original_value = 1.337, 
+                            original_wording = '0', 
+                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            simplified_wording = '0', 
+                            state = '0', 
+                            stemmed_wording = '0', 
+                            type = 'card', 
+                            value = 1.337, 
+                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            webid = '0', 
+                            wording = '0', )
+                        ], 
+                    transfers = [
+                        budgea.models.transfer.Transfer(
+                            account_balance = 1.337, 
+                            account_iban = '0', 
+                            amount = 1.337, 
+                            beneficiary_label = '0', 
+                            beneficiary_number = '0', 
+                            beneficiary_type = '0', 
+                            error = '0', 
+                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            fees = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_recipient = 56, 
+                            id_transaction = 56, 
+                            id_user = 56, 
+                            label = '0', 
+                            recipient_iban = '0', 
+                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            validate_mechanism = '0', 
+                            webid = '0', )
+                        ], 
+                    type = '0', 
+                    usage = '0', 
+                    webid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionAccount"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='boolean', baseName='active', complexType='null', getter='getActive', setter='setActive', description='This connection is active and will be automatically synced', dataType='bool', datatypeWithEnum='bool', dataFormat='null', name='active', min='null', max='null', defaultValue='True', defaultValueWithParam=' = data.active;', baseType='bool', containerType='null', title='null', unescapedDescription='This connection is active and will be automatically synced', maxLength=null, minLength=null, pattern='null', example='True', jsonSchema='{
+  "type" : "boolean",
+  "description" : "This connection is active and will be automatically synced",
+  "default" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=true, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Active', nameInSnakeCase='ACTIVE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionBank', baseName='bank', complexType='ConnectionBank', getter='getBank', setter='setBank', description='null', dataType='ConnectionBank', datatypeWithEnum='ConnectionBank', dataFormat='null', name='bank', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.bank;', baseType='ConnectionBank', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_bank.ConnectionBank(
+                    account_types = [
+                        '0'
+                        ], 
+                    auth_mechanism = '0', 
+                    available_auth_mechanisms = [
+                        '0'
+                        ], 
+                    available_transfer_mechanisms = [
+                        '0'
+                        ], 
+                    beta = True, 
+                    capabilities = [
+                        '0'
+                        ], 
+                    categories = [
+                        '0'
+                        ], 
+                    charged = True, 
+                    code = '0', 
+                    color = '0', 
+                    document_type = [
+                        '0'
+                        ], 
+                    documents_type = [
+                        '0'
+                        ], 
+                    hidden = True, 
+                    id = 56, 
+                    months_to_fetch = '0', 
+                    name = '0', 
+                    restricted = True, 
+                    siret = '0', 
+                    slug = '0', 
+                    sync_frequency = '0', 
+                    transfer_beneficiary_types = [
+                        '0'
+                        ], 
+                    urls = [
+                        '0'
+                        ], 
+                    uuid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionBank"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Bank', nameInSnakeCase='BANK', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionBank', baseName='connector', complexType='ConnectionBank', getter='getConnector', setter='setConnector', description='null', dataType='ConnectionBank', datatypeWithEnum='ConnectionBank', dataFormat='null', name='connector', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.connector;', baseType='ConnectionBank', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_bank.ConnectionBank(
+                    account_types = [
+                        '0'
+                        ], 
+                    auth_mechanism = '0', 
+                    available_auth_mechanisms = [
+                        '0'
+                        ], 
+                    available_transfer_mechanisms = [
+                        '0'
+                        ], 
+                    beta = True, 
+                    capabilities = [
+                        '0'
+                        ], 
+                    categories = [
+                        '0'
+                        ], 
+                    charged = True, 
+                    code = '0', 
+                    color = '0', 
+                    document_type = [
+                        '0'
+                        ], 
+                    documents_type = [
+                        '0'
+                        ], 
+                    hidden = True, 
+                    id = 56, 
+                    months_to_fetch = '0', 
+                    name = '0', 
+                    restricted = True, 
+                    siret = '0', 
+                    slug = '0', 
+                    sync_frequency = '0', 
+                    transfer_beneficiary_types = [
+                        '0'
+                        ], 
+                    urls = [
+                        '0'
+                        ], 
+                    uuid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionBank"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Connector', nameInSnakeCase='CONNECTOR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='connector_uuid', complexType='null', getter='getConnectorUuid', setter='setConnectorUuid', description='uuid of the connector (replaces id_connector)', dataType='str', datatypeWithEnum='str', dataFormat='null', name='connector_uuid', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.connector_uuid;', baseType='str', containerType='null', title='null', unescapedDescription='uuid of the connector (replaces id_connector)', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "description" : "uuid of the connector (replaces id_connector)"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='ConnectorUuid', nameInSnakeCase='CONNECTOR_UUID', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='created', complexType='null', getter='getCreated', setter='setCreated', description='Creation date', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='created', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.created;', baseType='datetime', containerType='null', title='null', unescapedDescription='Creation date', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "type" : "string",
+  "description" : "Creation date",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Created', nameInSnakeCase='CREATED', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='error', complexType='null', getter='getError', setter='setError', description='null', dataType='str', datatypeWithEnum='str', dataFormat='null', name='error', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.error;', baseType='str', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Error', nameInSnakeCase='ERROR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='error_message', complexType='null', getter='getErrorMessage', setter='setErrorMessage', description='If fail, error message received from bank or provider', dataType='str', datatypeWithEnum='str', dataFormat='null', name='error_message', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.error_message;', baseType='str', containerType='null', title='null', unescapedDescription='If fail, error message received from bank or provider', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "description" : "If fail, error message received from bank or provider",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='ErrorMessage', nameInSnakeCase='ERROR_MESSAGE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='expire', complexType='null', getter='getExpire', setter='setExpire', description='Expiration of the connection source. Used to purge the connection in case completion was not finished', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='expire', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.expire;', baseType='datetime', containerType='null', title='null', unescapedDescription='Expiration of the connection source. Used to purge the connection in case completion was not finished', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "type" : "string",
+  "description" : "Expiration of the connection source. Used to purge the connection in case completion was not finished",
+  "format" : "date-time",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Expire', nameInSnakeCase='EXPIRE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id', complexType='null', getter='getId', setter='setId', description='ID of connection', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id;', baseType='int', containerType='null', title='null', unescapedDescription='ID of connection', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of connection"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Id', nameInSnakeCase='ID', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_bank', complexType='null', getter='getIdBank', setter='setIdBank', description='null', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_bank', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_bank;', baseType='int', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdBank', nameInSnakeCase='ID_BANK', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_connector', complexType='null', getter='getIdConnector', setter='setIdConnector', description='ID of the related connector', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_connector', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_connector;', baseType='int', containerType='null', title='null', unescapedDescription='ID of the related connector', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of the related connector"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdConnector', nameInSnakeCase='ID_CONNECTOR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_provider', complexType='null', getter='getIdProvider', setter='setIdProvider', description='null', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_provider', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_provider;', baseType='int', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdProvider', nameInSnakeCase='ID_PROVIDER', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_user', complexType='null', getter='getIdUser', setter='setIdUser', description='ID of the related user', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_user', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_user;', baseType='int', containerType='null', title='null', unescapedDescription='ID of the related user', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of the related user"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdUser', nameInSnakeCase='ID_USER', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionInformations', baseName='informations', complexType='ConnectionInformations', getter='getInformations', setter='setInformations', description='null', dataType='ConnectionInformations', datatypeWithEnum='ConnectionInformations', dataFormat='null', name='informations', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.informations;', baseType='ConnectionInformations', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_informations.ConnectionInformations(
+                    connections = [
+                        budgea.models.connection.Connection(
+                            accounts = [
+                                budgea.models.connection_account.ConnectionAccount(
+                                    balance = 1.337, 
+                                    bic = '0', 
+                                    bookmarked = 56, 
+                                    coming = 1.337, 
+                                    coming_balance = 1.337, 
+                                    company_name = '0', 
+                                    currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    deleted = '0', 
+                                    disabled = True, 
+                                    display = True, 
+                                    error = '0', 
+                                    formatted_balance = '0', 
+                                    iban = '0', 
+                                    id = 56, 
+                                    id_connection = 56, 
+                                    id_parent = 56, 
+                                    id_source = 56, 
+                                    id_type = 56, 
+                                    id_user = 56, 
+                                    investments = [
+                                        budgea.models.user_investments.UserInvestments(
+                                            investments = [
+                                                budgea.models.investment.Investment(
+                                                    code = '0', 
+                                                    code_type = '0', 
+                                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                    description = '0', 
+                                                    diff = 1.337, 
+                                                    diff_percent = 1.337, 
+                                                    id = 56, 
+                                                    id_account = 56, 
+                                                    id_security = 56, 
+                                                    label = '0', 
+                                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                    original_currency = budgea.models.currency.Currency(
+                                                        crypto = True, 
+                                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                        id = '0', 
+                                                        marketcap = 1.337, 
+                                                        name = '0', 
+                                                        precision = 56, 
+                                                        prefix = True, 
+                                                        symbol = '0', ), 
+                                                    original_diff = 1.337, 
+                                                    original_unitprice = 1.337, 
+                                                    original_unitvalue = 1.337, 
+                                                    original_valuation = 1.337, 
+                                                    portfolio_share = 1.337, 
+                                                    prev_diff = 1.337, 
+                                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                                    quantity = 1.337, 
+                                                    source = '0', 
+                                                    unitprice = 1.337, 
+                                                    unitvalue = 1.337, 
+                                                    valuation = 1.337, 
+                                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                                ], 
+                                            total = 1.337, )
+                                        ], 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                                        account_label = '0', 
+                                        available_amount = 1.337, 
+                                        contact_name = '0', 
+                                        duration = 56, 
+                                        id = 56, 
+                                        id_account = 56, 
+                                        insurance_label = '0', 
+                                        last_payment_amount = 1.337, 
+                                        last_payment_date = '0', 
+                                        maturity_date = '0', 
+                                        nb_payments_done = 56, 
+                                        nb_payments_left = 56, 
+                                        nb_payments_total = 56, 
+                                        next_payment_amount = 1.337, 
+                                        next_payment_date = '0', 
+                                        rate = 1.337, 
+                                        subscription_date = '0', 
+                                        total_amount = 1.337, 
+                                        type = '0', 
+                                        used_amount = 1.337, ), 
+                                    name = '0', 
+                                    number = '0', 
+                                    original_name = '0', 
+                                    ownership = '0', 
+                                    recipients = [
+                                        budgea.models.recipient.Recipient(
+                                            add_verified = True, 
+                                            bank_name = '0', 
+                                            category = '0', 
+                                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            error = '0', 
+                                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            fields = '0', 
+                                            iban = '0', 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_target_account = 56, 
+                                            label = '0', 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            state = '0', 
+                                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            webid = '0', )
+                                        ], 
+                                    transactions = [
+                                        budgea.models.transaction.Transaction(
+                                            active = True, 
+                                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            card = '0', 
+                                            category = budgea.models.category.Category(
+                                                accountant_account = '0', 
+                                                color = '0', 
+                                                hidden = True, 
+                                                id = 56, 
+                                                id_logo = 56, 
+                                                id_parent_category = 56, 
+                                                id_parent_category_in_menu = 56, 
+                                                id_user = 56, 
+                                                income = True, 
+                                                name = '0', 
+                                                name_displayed = '0', 
+                                                refundable = True, ), 
+                                            coming = True, 
+                                            comment = '0', 
+                                            commission = 1.337, 
+                                            commission_currency = budgea.models.currency.Currency(
+                                                crypto = True, 
+                                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                id = '0', 
+                                                marketcap = 1.337, 
+                                                name = '0', 
+                                                precision = 56, 
+                                                prefix = True, 
+                                                symbol = '0', ), 
+                                            counterparty = '0', 
+                                            country = '0', 
+                                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            documents_count = 56, 
+                                            formatted_value = '0', 
+                                            gross_value = 1.337, 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_category = 56, 
+                                            id_cluster = 56, 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            nature = '0', 
+                                            new = True, 
+                                            nopurge = 56, 
+                                            original_gross_value = 1.337, 
+                                            original_value = 1.337, 
+                                            original_wording = '0', 
+                                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            simplified_wording = '0', 
+                                            state = '0', 
+                                            stemmed_wording = '0', 
+                                            type = 'card', 
+                                            value = 1.337, 
+                                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            webid = '0', 
+                                            wording = '0', )
+                                        ], 
+                                    transfers = [
+                                        budgea.models.transfer.Transfer(
+                                            account_balance = 1.337, 
+                                            account_iban = '0', 
+                                            amount = 1.337, 
+                                            beneficiary_label = '0', 
+                                            beneficiary_number = '0', 
+                                            beneficiary_type = '0', 
+                                            error = '0', 
+                                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            fees = 1.337, 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_recipient = 56, 
+                                            id_transaction = 56, 
+                                            id_user = 56, 
+                                            label = '0', 
+                                            recipient_iban = '0', 
+                                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            state = '0', 
+                                            validate_mechanism = '0', 
+                                            webid = '0', )
+                                        ], 
+                                    type = '0', 
+                                    usage = '0', 
+                                    webid = '0', )
+                                ], 
+                            active = True, 
+                            bank = budgea.models.connection_bank.ConnectionBank(
+                                account_types = [
+                                    '0'
+                                    ], 
+                                auth_mechanism = '0', 
+                                available_auth_mechanisms = [
+                                    '0'
+                                    ], 
+                                available_transfer_mechanisms = [
+                                    '0'
+                                    ], 
+                                beta = True, 
+                                capabilities = [
+                                    '0'
+                                    ], 
+                                categories = [
+                                    '0'
+                                    ], 
+                                charged = True, 
+                                code = '0', 
+                                color = '0', 
+                                document_type = [
+                                    '0'
+                                    ], 
+                                documents_type = [
+                                    '0'
+                                    ], 
+                                hidden = True, 
+                                id = 56, 
+                                months_to_fetch = '0', 
+                                name = '0', 
+                                restricted = True, 
+                                siret = '0', 
+                                slug = '0', 
+                                sync_frequency = '0', 
+                                transfer_beneficiary_types = [
+                                    '0'
+                                    ], 
+                                urls = [
+                                    '0'
+                                    ], 
+                                uuid = '0', ), 
+                            connector = budgea.models.connection_bank.ConnectionBank(
+                                auth_mechanism = '0', 
+                                beta = True, 
+                                charged = True, 
+                                code = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                months_to_fetch = '0', 
+                                name = '0', 
+                                restricted = True, 
+                                siret = '0', 
+                                slug = '0', 
+                                sync_frequency = '0', 
+                                uuid = '0', ), 
+                            connector_uuid = '0', 
+                            created = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            error_message = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = 56, 
+                            id_bank = 56, 
+                            id_connector = 56, 
+                            id_provider = 56, 
+                            id_user = 56, 
+                            last_push = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            next_try = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            subscriptions = [
+                                budgea.models.connection_subscription.ConnectionSubscription(
+                                    balance = 1.337, 
+                                    deleted = '0', 
+                                    disabled = '0', 
+                                    documents = [
+                                        budgea.models.document.Document(
+                                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            has_file_on_website = True, 
+                                            id = 56, 
+                                            id_category = 56, 
+                                            id_file = 56, 
+                                            id_subscription = 56, 
+                                            id_thumbnail = 56, 
+                                            id_type = 56, 
+                                            id_user = 56, 
+                                            income = True, 
+                                            issuer = '0', 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            name = '0', 
+                                            number = '0', 
+                                            readonly = True, 
+                                            thumb_url = '0', 
+                                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            total_amount = 1.337, 
+                                            type = 'statement', 
+                                            untaxed_amount = 1.337, 
+                                            url = '0', 
+                                            vat = 1.337, )
+                                        ], 
+                                    error = '0', 
+                                    formatted_balance = '0', 
+                                    id = 56, 
+                                    id_connection = 56, 
+                                    id_source = 56, 
+                                    id_user = 56, 
+                                    label = '0', 
+                                    last_update = '0', 
+                                    number = '0', 
+                                    renewdate = '0', 
+                                    subscriber = '0', 
+                                    validity = '0', )
+                                ], )
+                        ], 
+                    total = 56, )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionInformations"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=true, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Informations', nameInSnakeCase='INFORMATIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='last_push', complexType='null', getter='getLastPush', setter='setLastPush', description='Last successful push', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='last_push', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.last_push;', baseType='datetime', containerType='null', title='last_push', unescapedDescription='Last successful push', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "last_push",
+  "type" : "string",
+  "description" : "Last successful push",
+  "format" : "date-time",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='LastPush', nameInSnakeCase='LAST_PUSH', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='last_update', complexType='null', getter='getLastUpdate', setter='setLastUpdate', description='Last successful update', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='last_update', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.last_update;', baseType='datetime', containerType='null', title='last_update', unescapedDescription='Last successful update', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "last_update",
+  "type" : "string",
+  "description" : "Last successful update",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='LastUpdate', nameInSnakeCase='LAST_UPDATE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='next_try', complexType='null', getter='getNextTry', setter='setNextTry', description='Date of next synchronization', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='next_try', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.next_try;', baseType='datetime', containerType='null', title='next_try', unescapedDescription='Date of next synchronization', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "next_try",
+  "type" : "string",
+  "description" : "Date of next synchronization",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='NextTry', nameInSnakeCase='NEXT_TRY', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='state', complexType='null', getter='getState', setter='setState', description='null', dataType='str', datatypeWithEnum='str', dataFormat='null', name='state', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.state;', baseType='str', containerType='null', title='state', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "title" : "state",
+  "type" : "string",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='State', nameInSnakeCase='STATE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='array', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='list[ConnectionSubscription]', datatypeWithEnum='list[ConnectionSubscription]', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='list', containerType='array', title='subscriptions', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='[
+                    budgea.models.connection_subscription.ConnectionSubscription(
+                        balance = 1.337, 
+                        currency = budgea.models.currency.Currency(
+                            crypto = True, 
+                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = '0', 
+                            marketcap = 1.337, 
+                            name = '0', 
+                            precision = 56, 
+                            prefix = True, 
+                            symbol = '0', ), 
+                        deleted = '0', 
+                        disabled = '0', 
+                        documents = [
+                            budgea.models.document.Document(
+                                date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                has_file_on_website = True, 
+                                id = 56, 
+                                id_category = 56, 
+                                id_file = 56, 
+                                id_subscription = 56, 
+                                id_thumbnail = 56, 
+                                id_type = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                issuer = '0', 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                name = '0', 
+                                number = '0', 
+                                readonly = True, 
+                                thumb_url = '0', 
+                                timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                total_amount = 1.337, 
+                                type = 'statement', 
+                                untaxed_amount = 1.337, 
+                                url = '0', 
+                                vat = 1.337, )
+                            ], 
+                        error = '0', 
+                        formatted_balance = '0', 
+                        id = 56, 
+                        id_connection = 56, 
+                        id_source = 56, 
+                        id_user = 56, 
+                        label = '0', 
+                        last_update = '0', 
+                        number = '0', 
+                        renewdate = '0', 
+                        subscriber = '0', 
+                        validity = '0', )
+                    ]', jsonSchema='{
+  "title" : "subscriptions",
+  "type" : "array",
+  "items" : {
+    "$ref" : "#/components/schemas/ConnectionSubscription"
+  }
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=false, isContainer=true, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=true, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=CodegenProperty{openApiType='ConnectionSubscription', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='ConnectionSubscription', datatypeWithEnum='ConnectionSubscription', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='ConnectionSubscription', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_subscription.ConnectionSubscription(
+                    balance = 1.337, 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = '0', 
+                    documents = [
+                        budgea.models.document.Document(
+                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            has_file_on_website = True, 
+                            id = 56, 
+                            id_category = 56, 
+                            id_file = 56, 
+                            id_subscription = 56, 
+                            id_thumbnail = 56, 
+                            id_type = 56, 
+                            id_user = 56, 
+                            income = True, 
+                            issuer = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            name = '0', 
+                            number = '0', 
+                            readonly = True, 
+                            thumb_url = '0', 
+                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            total_amount = 1.337, 
+                            type = 'statement', 
+                            untaxed_amount = 1.337, 
+                            url = '0', 
+                            vat = 1.337, )
+                        ], 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_source = 56, 
+                    id_user = 56, 
+                    label = '0', 
+                    last_update = '0', 
+                    number = '0', 
+                    renewdate = '0', 
+                    subscriber = '0', 
+                    validity = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionSubscription"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, mostInnerItems=CodegenProperty{openApiType='ConnectionSubscription', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='ConnectionSubscription', datatypeWithEnum='ConnectionSubscription', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='ConnectionSubscription', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_subscription.ConnectionSubscription(
+                    balance = 1.337, 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = '0', 
+                    documents = [
+                        budgea.models.document.Document(
+                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            has_file_on_website = True, 
+                            id = 56, 
+                            id_category = 56, 
+                            id_file = 56, 
+                            id_subscription = 56, 
+                            id_thumbnail = 56, 
+                            id_type = 56, 
+                            id_user = 56, 
+                            income = True, 
+                            issuer = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            name = '0', 
+                            number = '0', 
+                            readonly = True, 
+                            thumb_url = '0', 
+                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            total_amount = 1.337, 
+                            type = 'statement', 
+                            untaxed_amount = 1.337, 
+                            url = '0', 
+                            vat = 1.337, )
+                        ], 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_source = 56, 
+                    id_user = 56, 
+                    label = '0', 
+                    last_update = '0', 
+                    number = '0', 
+                    renewdate = '0', 
+                    subscriber = '0', 
+                    validity = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionSubscription"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}], requiredVars=[CodegenProperty{openApiType='boolean', baseName='active', complexType='null', getter='getActive', setter='setActive', description='This connection is active and will be automatically synced', dataType='bool', datatypeWithEnum='bool', dataFormat='null', name='active', min='null', max='null', defaultValue='True', defaultValueWithParam=' = data.active;', baseType='bool', containerType='null', title='null', unescapedDescription='This connection is active and will be automatically synced', maxLength=null, minLength=null, pattern='null', example='True', jsonSchema='{
+  "type" : "boolean",
+  "description" : "This connection is active and will be automatically synced",
+  "default" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=true, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Active', nameInSnakeCase='ACTIVE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id', complexType='null', getter='getId', setter='setId', description='ID of connection', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id;', baseType='int', containerType='null', title='null', unescapedDescription='ID of connection', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of connection"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Id', nameInSnakeCase='ID', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_connector', complexType='null', getter='getIdConnector', setter='setIdConnector', description='ID of the related connector', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_connector', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_connector;', baseType='int', containerType='null', title='null', unescapedDescription='ID of the related connector', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of the related connector"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdConnector', nameInSnakeCase='ID_CONNECTOR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}], optionalVars=[CodegenProperty{openApiType='array', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='list[ConnectionAccount]', datatypeWithEnum='list[ConnectionAccount]', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='list', containerType='array', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='[
+                    budgea.models.connection_account.ConnectionAccount(
+                        balance = 1.337, 
+                        bic = '0', 
+                        bookmarked = 56, 
+                        coming = 1.337, 
+                        coming_balance = 1.337, 
+                        company_name = '0', 
+                        currency = budgea.models.currency.Currency(
+                            crypto = True, 
+                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = '0', 
+                            marketcap = 1.337, 
+                            name = '0', 
+                            precision = 56, 
+                            prefix = True, 
+                            symbol = '0', ), 
+                        deleted = '0', 
+                        disabled = True, 
+                        display = True, 
+                        error = '0', 
+                        formatted_balance = '0', 
+                        iban = '0', 
+                        id = 56, 
+                        id_connection = 56, 
+                        id_parent = 56, 
+                        id_source = 56, 
+                        id_type = 56, 
+                        id_user = 56, 
+                        investments = [
+                            budgea.models.user_investments.UserInvestments(
+                                investments = [
+                                    budgea.models.investment.Investment(
+                                        code = '0', 
+                                        code_type = '0', 
+                                        deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        description = '0', 
+                                        diff = 1.337, 
+                                        diff_percent = 1.337, 
+                                        id = 56, 
+                                        id_account = 56, 
+                                        id_security = 56, 
+                                        label = '0', 
+                                        last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        original_currency = budgea.models.currency.Currency(
+                                            crypto = True, 
+                                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            id = '0', 
+                                            marketcap = 1.337, 
+                                            name = '0', 
+                                            precision = 56, 
+                                            prefix = True, 
+                                            symbol = '0', ), 
+                                        original_diff = 1.337, 
+                                        original_unitprice = 1.337, 
+                                        original_unitvalue = 1.337, 
+                                        original_valuation = 1.337, 
+                                        portfolio_share = 1.337, 
+                                        prev_diff = 1.337, 
+                                        prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                        quantity = 1.337, 
+                                        source = '0', 
+                                        unitprice = 1.337, 
+                                        unitvalue = 1.337, 
+                                        valuation = 1.337, 
+                                        vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                    ], 
+                                total = 1.337, )
+                            ], 
+                        last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                            account_label = '0', 
+                            available_amount = 1.337, 
+                            contact_name = '0', 
+                            duration = 56, 
+                            id = 56, 
+                            id_account = 56, 
+                            insurance_label = '0', 
+                            last_payment_amount = 1.337, 
+                            last_payment_date = '0', 
+                            maturity_date = '0', 
+                            nb_payments_done = 56, 
+                            nb_payments_left = 56, 
+                            nb_payments_total = 56, 
+                            next_payment_amount = 1.337, 
+                            next_payment_date = '0', 
+                            rate = 1.337, 
+                            subscription_date = '0', 
+                            total_amount = 1.337, 
+                            type = '0', 
+                            used_amount = 1.337, ), 
+                        name = '0', 
+                        number = '0', 
+                        original_name = '0', 
+                        ownership = '0', 
+                        recipients = [
+                            budgea.models.recipient.Recipient(
+                                add_verified = True, 
+                                bank_name = '0', 
+                                category = '0', 
+                                deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                error = '0', 
+                                expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                fields = '0', 
+                                iban = '0', 
+                                id = 56, 
+                                id_account = 56, 
+                                id_target_account = 56, 
+                                label = '0', 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                state = '0', 
+                                time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                webid = '0', )
+                            ], 
+                        transactions = [
+                            budgea.models.transaction.Transaction(
+                                active = True, 
+                                application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                card = '0', 
+                                category = budgea.models.category.Category(
+                                    accountant_account = '0', 
+                                    color = '0', 
+                                    hidden = True, 
+                                    id = 56, 
+                                    id_logo = 56, 
+                                    id_parent_category = 56, 
+                                    id_parent_category_in_menu = 56, 
+                                    id_user = 56, 
+                                    income = True, 
+                                    name = '0', 
+                                    name_displayed = '0', 
+                                    refundable = True, ), 
+                                coming = True, 
+                                comment = '0', 
+                                commission = 1.337, 
+                                commission_currency = budgea.models.currency.Currency(
+                                    crypto = True, 
+                                    datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    id = '0', 
+                                    marketcap = 1.337, 
+                                    name = '0', 
+                                    precision = 56, 
+                                    prefix = True, 
+                                    symbol = '0', ), 
+                                counterparty = '0', 
+                                country = '0', 
+                                date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                documents_count = 56, 
+                                formatted_value = '0', 
+                                gross_value = 1.337, 
+                                id = 56, 
+                                id_account = 56, 
+                                id_category = 56, 
+                                id_cluster = 56, 
+                                informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                    total = 1.337, 
+                                    transactioninformations = [
+                                        budgea.models.transaction_information.TransactionInformation(
+                                            id = 56, 
+                                            id_transaction = 56, 
+                                            key = '0', 
+                                            value = '0', )
+                                        ], ), 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                nature = '0', 
+                                new = True, 
+                                nopurge = 56, 
+                                original_gross_value = 1.337, 
+                                original_value = 1.337, 
+                                original_wording = '0', 
+                                rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                simplified_wording = '0', 
+                                state = '0', 
+                                stemmed_wording = '0', 
+                                type = 'card', 
+                                value = 1.337, 
+                                vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                webid = '0', 
+                                wording = '0', )
+                            ], 
+                        transfers = [
+                            budgea.models.transfer.Transfer(
+                                account_balance = 1.337, 
+                                account_iban = '0', 
+                                amount = 1.337, 
+                                beneficiary_label = '0', 
+                                beneficiary_number = '0', 
+                                beneficiary_type = '0', 
+                                error = '0', 
+                                exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                fees = 1.337, 
+                                id = 56, 
+                                id_account = 56, 
+                                id_recipient = 56, 
+                                id_transaction = 56, 
+                                id_user = 56, 
+                                label = '0', 
+                                recipient_iban = '0', 
+                                register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                state = '0', 
+                                validate_mechanism = '0', 
+                                webid = '0', )
+                            ], 
+                        type = '0', 
+                        usage = '0', 
+                        webid = '0', )
+                    ]', jsonSchema='{
+  "type" : "array",
+  "items" : {
+    "$ref" : "#/components/schemas/ConnectionAccount"
+  }
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=false, isContainer=true, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=true, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=CodegenProperty{openApiType='ConnectionAccount', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='ConnectionAccount', datatypeWithEnum='ConnectionAccount', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='ConnectionAccount', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_account.ConnectionAccount(
+                    balance = 1.337, 
+                    bic = '0', 
+                    bookmarked = 56, 
+                    coming = 1.337, 
+                    coming_balance = 1.337, 
+                    company_name = '0', 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = True, 
+                    display = True, 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    iban = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_parent = 56, 
+                    id_source = 56, 
+                    id_type = 56, 
+                    id_user = 56, 
+                    investments = [
+                        budgea.models.user_investments.UserInvestments(
+                            investments = [
+                                budgea.models.investment.Investment(
+                                    code = '0', 
+                                    code_type = '0', 
+                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    description = '0', 
+                                    diff = 1.337, 
+                                    diff_percent = 1.337, 
+                                    id = 56, 
+                                    id_account = 56, 
+                                    id_security = 56, 
+                                    label = '0', 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    original_currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    original_diff = 1.337, 
+                                    original_unitprice = 1.337, 
+                                    original_unitvalue = 1.337, 
+                                    original_valuation = 1.337, 
+                                    portfolio_share = 1.337, 
+                                    prev_diff = 1.337, 
+                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                    quantity = 1.337, 
+                                    source = '0', 
+                                    unitprice = 1.337, 
+                                    unitvalue = 1.337, 
+                                    valuation = 1.337, 
+                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                ], 
+                            total = 1.337, )
+                        ], 
+                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                        account_label = '0', 
+                        available_amount = 1.337, 
+                        contact_name = '0', 
+                        duration = 56, 
+                        id = 56, 
+                        id_account = 56, 
+                        insurance_label = '0', 
+                        last_payment_amount = 1.337, 
+                        last_payment_date = '0', 
+                        maturity_date = '0', 
+                        nb_payments_done = 56, 
+                        nb_payments_left = 56, 
+                        nb_payments_total = 56, 
+                        next_payment_amount = 1.337, 
+                        next_payment_date = '0', 
+                        rate = 1.337, 
+                        subscription_date = '0', 
+                        total_amount = 1.337, 
+                        type = '0', 
+                        used_amount = 1.337, ), 
+                    name = '0', 
+                    number = '0', 
+                    original_name = '0', 
+                    ownership = '0', 
+                    recipients = [
+                        budgea.models.recipient.Recipient(
+                            add_verified = True, 
+                            bank_name = '0', 
+                            category = '0', 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            fields = '0', 
+                            iban = '0', 
+                            id = 56, 
+                            id_account = 56, 
+                            id_target_account = 56, 
+                            label = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            webid = '0', )
+                        ], 
+                    transactions = [
+                        budgea.models.transaction.Transaction(
+                            active = True, 
+                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            card = '0', 
+                            category = budgea.models.category.Category(
+                                accountant_account = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                id_logo = 56, 
+                                id_parent_category = 56, 
+                                id_parent_category_in_menu = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                name = '0', 
+                                name_displayed = '0', 
+                                refundable = True, ), 
+                            coming = True, 
+                            comment = '0', 
+                            commission = 1.337, 
+                            commission_currency = budgea.models.currency.Currency(
+                                crypto = True, 
+                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                id = '0', 
+                                marketcap = 1.337, 
+                                name = '0', 
+                                precision = 56, 
+                                prefix = True, 
+                                symbol = '0', ), 
+                            counterparty = '0', 
+                            country = '0', 
+                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            documents_count = 56, 
+                            formatted_value = '0', 
+                            gross_value = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_category = 56, 
+                            id_cluster = 56, 
+                            informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                total = 1.337, 
+                                transactioninformations = [
+                                    budgea.models.transaction_information.TransactionInformation(
+                                        id = 56, 
+                                        id_transaction = 56, 
+                                        key = '0', 
+                                        value = '0', )
+                                    ], ), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            nature = '0', 
+                            new = True, 
+                            nopurge = 56, 
+                            original_gross_value = 1.337, 
+                            original_value = 1.337, 
+                            original_wording = '0', 
+                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            simplified_wording = '0', 
+                            state = '0', 
+                            stemmed_wording = '0', 
+                            type = 'card', 
+                            value = 1.337, 
+                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            webid = '0', 
+                            wording = '0', )
+                        ], 
+                    transfers = [
+                        budgea.models.transfer.Transfer(
+                            account_balance = 1.337, 
+                            account_iban = '0', 
+                            amount = 1.337, 
+                            beneficiary_label = '0', 
+                            beneficiary_number = '0', 
+                            beneficiary_type = '0', 
+                            error = '0', 
+                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            fees = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_recipient = 56, 
+                            id_transaction = 56, 
+                            id_user = 56, 
+                            label = '0', 
+                            recipient_iban = '0', 
+                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            validate_mechanism = '0', 
+                            webid = '0', )
+                        ], 
+                    type = '0', 
+                    usage = '0', 
+                    webid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionAccount"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, mostInnerItems=CodegenProperty{openApiType='ConnectionAccount', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='ConnectionAccount', datatypeWithEnum='ConnectionAccount', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='ConnectionAccount', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_account.ConnectionAccount(
+                    balance = 1.337, 
+                    bic = '0', 
+                    bookmarked = 56, 
+                    coming = 1.337, 
+                    coming_balance = 1.337, 
+                    company_name = '0', 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = True, 
+                    display = True, 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    iban = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_parent = 56, 
+                    id_source = 56, 
+                    id_type = 56, 
+                    id_user = 56, 
+                    investments = [
+                        budgea.models.user_investments.UserInvestments(
+                            investments = [
+                                budgea.models.investment.Investment(
+                                    code = '0', 
+                                    code_type = '0', 
+                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    description = '0', 
+                                    diff = 1.337, 
+                                    diff_percent = 1.337, 
+                                    id = 56, 
+                                    id_account = 56, 
+                                    id_security = 56, 
+                                    label = '0', 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    original_currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    original_diff = 1.337, 
+                                    original_unitprice = 1.337, 
+                                    original_unitvalue = 1.337, 
+                                    original_valuation = 1.337, 
+                                    portfolio_share = 1.337, 
+                                    prev_diff = 1.337, 
+                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                    quantity = 1.337, 
+                                    source = '0', 
+                                    unitprice = 1.337, 
+                                    unitvalue = 1.337, 
+                                    valuation = 1.337, 
+                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                ], 
+                            total = 1.337, )
+                        ], 
+                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                        account_label = '0', 
+                        available_amount = 1.337, 
+                        contact_name = '0', 
+                        duration = 56, 
+                        id = 56, 
+                        id_account = 56, 
+                        insurance_label = '0', 
+                        last_payment_amount = 1.337, 
+                        last_payment_date = '0', 
+                        maturity_date = '0', 
+                        nb_payments_done = 56, 
+                        nb_payments_left = 56, 
+                        nb_payments_total = 56, 
+                        next_payment_amount = 1.337, 
+                        next_payment_date = '0', 
+                        rate = 1.337, 
+                        subscription_date = '0', 
+                        total_amount = 1.337, 
+                        type = '0', 
+                        used_amount = 1.337, ), 
+                    name = '0', 
+                    number = '0', 
+                    original_name = '0', 
+                    ownership = '0', 
+                    recipients = [
+                        budgea.models.recipient.Recipient(
+                            add_verified = True, 
+                            bank_name = '0', 
+                            category = '0', 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            fields = '0', 
+                            iban = '0', 
+                            id = 56, 
+                            id_account = 56, 
+                            id_target_account = 56, 
+                            label = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            webid = '0', )
+                        ], 
+                    transactions = [
+                        budgea.models.transaction.Transaction(
+                            active = True, 
+                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            card = '0', 
+                            category = budgea.models.category.Category(
+                                accountant_account = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                id_logo = 56, 
+                                id_parent_category = 56, 
+                                id_parent_category_in_menu = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                name = '0', 
+                                name_displayed = '0', 
+                                refundable = True, ), 
+                            coming = True, 
+                            comment = '0', 
+                            commission = 1.337, 
+                            commission_currency = budgea.models.currency.Currency(
+                                crypto = True, 
+                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                id = '0', 
+                                marketcap = 1.337, 
+                                name = '0', 
+                                precision = 56, 
+                                prefix = True, 
+                                symbol = '0', ), 
+                            counterparty = '0', 
+                            country = '0', 
+                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            documents_count = 56, 
+                            formatted_value = '0', 
+                            gross_value = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_category = 56, 
+                            id_cluster = 56, 
+                            informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                total = 1.337, 
+                                transactioninformations = [
+                                    budgea.models.transaction_information.TransactionInformation(
+                                        id = 56, 
+                                        id_transaction = 56, 
+                                        key = '0', 
+                                        value = '0', )
+                                    ], ), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            nature = '0', 
+                            new = True, 
+                            nopurge = 56, 
+                            original_gross_value = 1.337, 
+                            original_value = 1.337, 
+                            original_wording = '0', 
+                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            simplified_wording = '0', 
+                            state = '0', 
+                            stemmed_wording = '0', 
+                            type = 'card', 
+                            value = 1.337, 
+                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            webid = '0', 
+                            wording = '0', )
+                        ], 
+                    transfers = [
+                        budgea.models.transfer.Transfer(
+                            account_balance = 1.337, 
+                            account_iban = '0', 
+                            amount = 1.337, 
+                            beneficiary_label = '0', 
+                            beneficiary_number = '0', 
+                            beneficiary_type = '0', 
+                            error = '0', 
+                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            fees = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_recipient = 56, 
+                            id_transaction = 56, 
+                            id_user = 56, 
+                            label = '0', 
+                            recipient_iban = '0', 
+                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            validate_mechanism = '0', 
+                            webid = '0', )
+                        ], 
+                    type = '0', 
+                    usage = '0', 
+                    webid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionAccount"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionBank', baseName='bank', complexType='ConnectionBank', getter='getBank', setter='setBank', description='null', dataType='ConnectionBank', datatypeWithEnum='ConnectionBank', dataFormat='null', name='bank', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.bank;', baseType='ConnectionBank', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_bank.ConnectionBank(
+                    account_types = [
+                        '0'
+                        ], 
+                    auth_mechanism = '0', 
+                    available_auth_mechanisms = [
+                        '0'
+                        ], 
+                    available_transfer_mechanisms = [
+                        '0'
+                        ], 
+                    beta = True, 
+                    capabilities = [
+                        '0'
+                        ], 
+                    categories = [
+                        '0'
+                        ], 
+                    charged = True, 
+                    code = '0', 
+                    color = '0', 
+                    document_type = [
+                        '0'
+                        ], 
+                    documents_type = [
+                        '0'
+                        ], 
+                    hidden = True, 
+                    id = 56, 
+                    months_to_fetch = '0', 
+                    name = '0', 
+                    restricted = True, 
+                    siret = '0', 
+                    slug = '0', 
+                    sync_frequency = '0', 
+                    transfer_beneficiary_types = [
+                        '0'
+                        ], 
+                    urls = [
+                        '0'
+                        ], 
+                    uuid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionBank"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Bank', nameInSnakeCase='BANK', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionBank', baseName='connector', complexType='ConnectionBank', getter='getConnector', setter='setConnector', description='null', dataType='ConnectionBank', datatypeWithEnum='ConnectionBank', dataFormat='null', name='connector', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.connector;', baseType='ConnectionBank', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_bank.ConnectionBank(
+                    account_types = [
+                        '0'
+                        ], 
+                    auth_mechanism = '0', 
+                    available_auth_mechanisms = [
+                        '0'
+                        ], 
+                    available_transfer_mechanisms = [
+                        '0'
+                        ], 
+                    beta = True, 
+                    capabilities = [
+                        '0'
+                        ], 
+                    categories = [
+                        '0'
+                        ], 
+                    charged = True, 
+                    code = '0', 
+                    color = '0', 
+                    document_type = [
+                        '0'
+                        ], 
+                    documents_type = [
+                        '0'
+                        ], 
+                    hidden = True, 
+                    id = 56, 
+                    months_to_fetch = '0', 
+                    name = '0', 
+                    restricted = True, 
+                    siret = '0', 
+                    slug = '0', 
+                    sync_frequency = '0', 
+                    transfer_beneficiary_types = [
+                        '0'
+                        ], 
+                    urls = [
+                        '0'
+                        ], 
+                    uuid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionBank"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Connector', nameInSnakeCase='CONNECTOR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='connector_uuid', complexType='null', getter='getConnectorUuid', setter='setConnectorUuid', description='uuid of the connector (replaces id_connector)', dataType='str', datatypeWithEnum='str', dataFormat='null', name='connector_uuid', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.connector_uuid;', baseType='str', containerType='null', title='null', unescapedDescription='uuid of the connector (replaces id_connector)', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "description" : "uuid of the connector (replaces id_connector)"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='ConnectorUuid', nameInSnakeCase='CONNECTOR_UUID', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='created', complexType='null', getter='getCreated', setter='setCreated', description='Creation date', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='created', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.created;', baseType='datetime', containerType='null', title='null', unescapedDescription='Creation date', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "type" : "string",
+  "description" : "Creation date",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Created', nameInSnakeCase='CREATED', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='error', complexType='null', getter='getError', setter='setError', description='null', dataType='str', datatypeWithEnum='str', dataFormat='null', name='error', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.error;', baseType='str', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Error', nameInSnakeCase='ERROR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='error_message', complexType='null', getter='getErrorMessage', setter='setErrorMessage', description='If fail, error message received from bank or provider', dataType='str', datatypeWithEnum='str', dataFormat='null', name='error_message', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.error_message;', baseType='str', containerType='null', title='null', unescapedDescription='If fail, error message received from bank or provider', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "description" : "If fail, error message received from bank or provider",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='ErrorMessage', nameInSnakeCase='ERROR_MESSAGE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='expire', complexType='null', getter='getExpire', setter='setExpire', description='Expiration of the connection source. Used to purge the connection in case completion was not finished', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='expire', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.expire;', baseType='datetime', containerType='null', title='null', unescapedDescription='Expiration of the connection source. Used to purge the connection in case completion was not finished', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "type" : "string",
+  "description" : "Expiration of the connection source. Used to purge the connection in case completion was not finished",
+  "format" : "date-time",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Expire', nameInSnakeCase='EXPIRE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_bank', complexType='null', getter='getIdBank', setter='setIdBank', description='null', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_bank', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_bank;', baseType='int', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdBank', nameInSnakeCase='ID_BANK', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_provider', complexType='null', getter='getIdProvider', setter='setIdProvider', description='null', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_provider', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_provider;', baseType='int', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdProvider', nameInSnakeCase='ID_PROVIDER', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_user', complexType='null', getter='getIdUser', setter='setIdUser', description='ID of the related user', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_user', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_user;', baseType='int', containerType='null', title='null', unescapedDescription='ID of the related user', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of the related user"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdUser', nameInSnakeCase='ID_USER', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionInformations', baseName='informations', complexType='ConnectionInformations', getter='getInformations', setter='setInformations', description='null', dataType='ConnectionInformations', datatypeWithEnum='ConnectionInformations', dataFormat='null', name='informations', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.informations;', baseType='ConnectionInformations', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_informations.ConnectionInformations(
+                    connections = [
+                        budgea.models.connection.Connection(
+                            accounts = [
+                                budgea.models.connection_account.ConnectionAccount(
+                                    balance = 1.337, 
+                                    bic = '0', 
+                                    bookmarked = 56, 
+                                    coming = 1.337, 
+                                    coming_balance = 1.337, 
+                                    company_name = '0', 
+                                    currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    deleted = '0', 
+                                    disabled = True, 
+                                    display = True, 
+                                    error = '0', 
+                                    formatted_balance = '0', 
+                                    iban = '0', 
+                                    id = 56, 
+                                    id_connection = 56, 
+                                    id_parent = 56, 
+                                    id_source = 56, 
+                                    id_type = 56, 
+                                    id_user = 56, 
+                                    investments = [
+                                        budgea.models.user_investments.UserInvestments(
+                                            investments = [
+                                                budgea.models.investment.Investment(
+                                                    code = '0', 
+                                                    code_type = '0', 
+                                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                    description = '0', 
+                                                    diff = 1.337, 
+                                                    diff_percent = 1.337, 
+                                                    id = 56, 
+                                                    id_account = 56, 
+                                                    id_security = 56, 
+                                                    label = '0', 
+                                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                    original_currency = budgea.models.currency.Currency(
+                                                        crypto = True, 
+                                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                        id = '0', 
+                                                        marketcap = 1.337, 
+                                                        name = '0', 
+                                                        precision = 56, 
+                                                        prefix = True, 
+                                                        symbol = '0', ), 
+                                                    original_diff = 1.337, 
+                                                    original_unitprice = 1.337, 
+                                                    original_unitvalue = 1.337, 
+                                                    original_valuation = 1.337, 
+                                                    portfolio_share = 1.337, 
+                                                    prev_diff = 1.337, 
+                                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                                    quantity = 1.337, 
+                                                    source = '0', 
+                                                    unitprice = 1.337, 
+                                                    unitvalue = 1.337, 
+                                                    valuation = 1.337, 
+                                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                                ], 
+                                            total = 1.337, )
+                                        ], 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                                        account_label = '0', 
+                                        available_amount = 1.337, 
+                                        contact_name = '0', 
+                                        duration = 56, 
+                                        id = 56, 
+                                        id_account = 56, 
+                                        insurance_label = '0', 
+                                        last_payment_amount = 1.337, 
+                                        last_payment_date = '0', 
+                                        maturity_date = '0', 
+                                        nb_payments_done = 56, 
+                                        nb_payments_left = 56, 
+                                        nb_payments_total = 56, 
+                                        next_payment_amount = 1.337, 
+                                        next_payment_date = '0', 
+                                        rate = 1.337, 
+                                        subscription_date = '0', 
+                                        total_amount = 1.337, 
+                                        type = '0', 
+                                        used_amount = 1.337, ), 
+                                    name = '0', 
+                                    number = '0', 
+                                    original_name = '0', 
+                                    ownership = '0', 
+                                    recipients = [
+                                        budgea.models.recipient.Recipient(
+                                            add_verified = True, 
+                                            bank_name = '0', 
+                                            category = '0', 
+                                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            error = '0', 
+                                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            fields = '0', 
+                                            iban = '0', 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_target_account = 56, 
+                                            label = '0', 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            state = '0', 
+                                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            webid = '0', )
+                                        ], 
+                                    transactions = [
+                                        budgea.models.transaction.Transaction(
+                                            active = True, 
+                                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            card = '0', 
+                                            category = budgea.models.category.Category(
+                                                accountant_account = '0', 
+                                                color = '0', 
+                                                hidden = True, 
+                                                id = 56, 
+                                                id_logo = 56, 
+                                                id_parent_category = 56, 
+                                                id_parent_category_in_menu = 56, 
+                                                id_user = 56, 
+                                                income = True, 
+                                                name = '0', 
+                                                name_displayed = '0', 
+                                                refundable = True, ), 
+                                            coming = True, 
+                                            comment = '0', 
+                                            commission = 1.337, 
+                                            commission_currency = budgea.models.currency.Currency(
+                                                crypto = True, 
+                                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                id = '0', 
+                                                marketcap = 1.337, 
+                                                name = '0', 
+                                                precision = 56, 
+                                                prefix = True, 
+                                                symbol = '0', ), 
+                                            counterparty = '0', 
+                                            country = '0', 
+                                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            documents_count = 56, 
+                                            formatted_value = '0', 
+                                            gross_value = 1.337, 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_category = 56, 
+                                            id_cluster = 56, 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            nature = '0', 
+                                            new = True, 
+                                            nopurge = 56, 
+                                            original_gross_value = 1.337, 
+                                            original_value = 1.337, 
+                                            original_wording = '0', 
+                                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            simplified_wording = '0', 
+                                            state = '0', 
+                                            stemmed_wording = '0', 
+                                            type = 'card', 
+                                            value = 1.337, 
+                                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            webid = '0', 
+                                            wording = '0', )
+                                        ], 
+                                    transfers = [
+                                        budgea.models.transfer.Transfer(
+                                            account_balance = 1.337, 
+                                            account_iban = '0', 
+                                            amount = 1.337, 
+                                            beneficiary_label = '0', 
+                                            beneficiary_number = '0', 
+                                            beneficiary_type = '0', 
+                                            error = '0', 
+                                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            fees = 1.337, 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_recipient = 56, 
+                                            id_transaction = 56, 
+                                            id_user = 56, 
+                                            label = '0', 
+                                            recipient_iban = '0', 
+                                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            state = '0', 
+                                            validate_mechanism = '0', 
+                                            webid = '0', )
+                                        ], 
+                                    type = '0', 
+                                    usage = '0', 
+                                    webid = '0', )
+                                ], 
+                            active = True, 
+                            bank = budgea.models.connection_bank.ConnectionBank(
+                                account_types = [
+                                    '0'
+                                    ], 
+                                auth_mechanism = '0', 
+                                available_auth_mechanisms = [
+                                    '0'
+                                    ], 
+                                available_transfer_mechanisms = [
+                                    '0'
+                                    ], 
+                                beta = True, 
+                                capabilities = [
+                                    '0'
+                                    ], 
+                                categories = [
+                                    '0'
+                                    ], 
+                                charged = True, 
+                                code = '0', 
+                                color = '0', 
+                                document_type = [
+                                    '0'
+                                    ], 
+                                documents_type = [
+                                    '0'
+                                    ], 
+                                hidden = True, 
+                                id = 56, 
+                                months_to_fetch = '0', 
+                                name = '0', 
+                                restricted = True, 
+                                siret = '0', 
+                                slug = '0', 
+                                sync_frequency = '0', 
+                                transfer_beneficiary_types = [
+                                    '0'
+                                    ], 
+                                urls = [
+                                    '0'
+                                    ], 
+                                uuid = '0', ), 
+                            connector = budgea.models.connection_bank.ConnectionBank(
+                                auth_mechanism = '0', 
+                                beta = True, 
+                                charged = True, 
+                                code = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                months_to_fetch = '0', 
+                                name = '0', 
+                                restricted = True, 
+                                siret = '0', 
+                                slug = '0', 
+                                sync_frequency = '0', 
+                                uuid = '0', ), 
+                            connector_uuid = '0', 
+                            created = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            error_message = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = 56, 
+                            id_bank = 56, 
+                            id_connector = 56, 
+                            id_provider = 56, 
+                            id_user = 56, 
+                            last_push = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            next_try = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            subscriptions = [
+                                budgea.models.connection_subscription.ConnectionSubscription(
+                                    balance = 1.337, 
+                                    deleted = '0', 
+                                    disabled = '0', 
+                                    documents = [
+                                        budgea.models.document.Document(
+                                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            has_file_on_website = True, 
+                                            id = 56, 
+                                            id_category = 56, 
+                                            id_file = 56, 
+                                            id_subscription = 56, 
+                                            id_thumbnail = 56, 
+                                            id_type = 56, 
+                                            id_user = 56, 
+                                            income = True, 
+                                            issuer = '0', 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            name = '0', 
+                                            number = '0', 
+                                            readonly = True, 
+                                            thumb_url = '0', 
+                                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            total_amount = 1.337, 
+                                            type = 'statement', 
+                                            untaxed_amount = 1.337, 
+                                            url = '0', 
+                                            vat = 1.337, )
+                                        ], 
+                                    error = '0', 
+                                    formatted_balance = '0', 
+                                    id = 56, 
+                                    id_connection = 56, 
+                                    id_source = 56, 
+                                    id_user = 56, 
+                                    label = '0', 
+                                    last_update = '0', 
+                                    number = '0', 
+                                    renewdate = '0', 
+                                    subscriber = '0', 
+                                    validity = '0', )
+                                ], )
+                        ], 
+                    total = 56, )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionInformations"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Informations', nameInSnakeCase='INFORMATIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='last_push', complexType='null', getter='getLastPush', setter='setLastPush', description='Last successful push', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='last_push', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.last_push;', baseType='datetime', containerType='null', title='last_push', unescapedDescription='Last successful push', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "last_push",
+  "type" : "string",
+  "description" : "Last successful push",
+  "format" : "date-time",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='LastPush', nameInSnakeCase='LAST_PUSH', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='last_update', complexType='null', getter='getLastUpdate', setter='setLastUpdate', description='Last successful update', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='last_update', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.last_update;', baseType='datetime', containerType='null', title='last_update', unescapedDescription='Last successful update', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "last_update",
+  "type" : "string",
+  "description" : "Last successful update",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='LastUpdate', nameInSnakeCase='LAST_UPDATE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='next_try', complexType='null', getter='getNextTry', setter='setNextTry', description='Date of next synchronization', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='next_try', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.next_try;', baseType='datetime', containerType='null', title='next_try', unescapedDescription='Date of next synchronization', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "next_try",
+  "type" : "string",
+  "description" : "Date of next synchronization",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='NextTry', nameInSnakeCase='NEXT_TRY', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='state', complexType='null', getter='getState', setter='setState', description='null', dataType='str', datatypeWithEnum='str', dataFormat='null', name='state', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.state;', baseType='str', containerType='null', title='state', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "title" : "state",
+  "type" : "string",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='State', nameInSnakeCase='STATE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='array', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='list[ConnectionSubscription]', datatypeWithEnum='list[ConnectionSubscription]', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='list', containerType='array', title='subscriptions', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='[
+                    budgea.models.connection_subscription.ConnectionSubscription(
+                        balance = 1.337, 
+                        currency = budgea.models.currency.Currency(
+                            crypto = True, 
+                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = '0', 
+                            marketcap = 1.337, 
+                            name = '0', 
+                            precision = 56, 
+                            prefix = True, 
+                            symbol = '0', ), 
+                        deleted = '0', 
+                        disabled = '0', 
+                        documents = [
+                            budgea.models.document.Document(
+                                date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                has_file_on_website = True, 
+                                id = 56, 
+                                id_category = 56, 
+                                id_file = 56, 
+                                id_subscription = 56, 
+                                id_thumbnail = 56, 
+                                id_type = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                issuer = '0', 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                name = '0', 
+                                number = '0', 
+                                readonly = True, 
+                                thumb_url = '0', 
+                                timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                total_amount = 1.337, 
+                                type = 'statement', 
+                                untaxed_amount = 1.337, 
+                                url = '0', 
+                                vat = 1.337, )
+                            ], 
+                        error = '0', 
+                        formatted_balance = '0', 
+                        id = 56, 
+                        id_connection = 56, 
+                        id_source = 56, 
+                        id_user = 56, 
+                        label = '0', 
+                        last_update = '0', 
+                        number = '0', 
+                        renewdate = '0', 
+                        subscriber = '0', 
+                        validity = '0', )
+                    ]', jsonSchema='{
+  "title" : "subscriptions",
+  "type" : "array",
+  "items" : {
+    "$ref" : "#/components/schemas/ConnectionSubscription"
+  }
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=false, isContainer=true, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=true, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=CodegenProperty{openApiType='ConnectionSubscription', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='ConnectionSubscription', datatypeWithEnum='ConnectionSubscription', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='ConnectionSubscription', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_subscription.ConnectionSubscription(
+                    balance = 1.337, 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = '0', 
+                    documents = [
+                        budgea.models.document.Document(
+                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            has_file_on_website = True, 
+                            id = 56, 
+                            id_category = 56, 
+                            id_file = 56, 
+                            id_subscription = 56, 
+                            id_thumbnail = 56, 
+                            id_type = 56, 
+                            id_user = 56, 
+                            income = True, 
+                            issuer = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            name = '0', 
+                            number = '0', 
+                            readonly = True, 
+                            thumb_url = '0', 
+                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            total_amount = 1.337, 
+                            type = 'statement', 
+                            untaxed_amount = 1.337, 
+                            url = '0', 
+                            vat = 1.337, )
+                        ], 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_source = 56, 
+                    id_user = 56, 
+                    label = '0', 
+                    last_update = '0', 
+                    number = '0', 
+                    renewdate = '0', 
+                    subscriber = '0', 
+                    validity = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionSubscription"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, mostInnerItems=CodegenProperty{openApiType='ConnectionSubscription', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='ConnectionSubscription', datatypeWithEnum='ConnectionSubscription', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='ConnectionSubscription', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_subscription.ConnectionSubscription(
+                    balance = 1.337, 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = '0', 
+                    documents = [
+                        budgea.models.document.Document(
+                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            has_file_on_website = True, 
+                            id = 56, 
+                            id_category = 56, 
+                            id_file = 56, 
+                            id_subscription = 56, 
+                            id_thumbnail = 56, 
+                            id_type = 56, 
+                            id_user = 56, 
+                            income = True, 
+                            issuer = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            name = '0', 
+                            number = '0', 
+                            readonly = True, 
+                            thumb_url = '0', 
+                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            total_amount = 1.337, 
+                            type = 'statement', 
+                            untaxed_amount = 1.337, 
+                            url = '0', 
+                            vat = 1.337, )
+                        ], 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_source = 56, 
+                    id_user = 56, 
+                    label = '0', 
+                    last_update = '0', 
+                    number = '0', 
+                    renewdate = '0', 
+                    subscriber = '0', 
+                    validity = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionSubscription"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}], readOnlyVars=[], readWriteVars=[CodegenProperty{openApiType='array', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='list[ConnectionAccount]', datatypeWithEnum='list[ConnectionAccount]', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='list', containerType='array', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='[
+                    budgea.models.connection_account.ConnectionAccount(
+                        balance = 1.337, 
+                        bic = '0', 
+                        bookmarked = 56, 
+                        coming = 1.337, 
+                        coming_balance = 1.337, 
+                        company_name = '0', 
+                        currency = budgea.models.currency.Currency(
+                            crypto = True, 
+                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = '0', 
+                            marketcap = 1.337, 
+                            name = '0', 
+                            precision = 56, 
+                            prefix = True, 
+                            symbol = '0', ), 
+                        deleted = '0', 
+                        disabled = True, 
+                        display = True, 
+                        error = '0', 
+                        formatted_balance = '0', 
+                        iban = '0', 
+                        id = 56, 
+                        id_connection = 56, 
+                        id_parent = 56, 
+                        id_source = 56, 
+                        id_type = 56, 
+                        id_user = 56, 
+                        investments = [
+                            budgea.models.user_investments.UserInvestments(
+                                investments = [
+                                    budgea.models.investment.Investment(
+                                        code = '0', 
+                                        code_type = '0', 
+                                        deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        description = '0', 
+                                        diff = 1.337, 
+                                        diff_percent = 1.337, 
+                                        id = 56, 
+                                        id_account = 56, 
+                                        id_security = 56, 
+                                        label = '0', 
+                                        last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        original_currency = budgea.models.currency.Currency(
+                                            crypto = True, 
+                                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            id = '0', 
+                                            marketcap = 1.337, 
+                                            name = '0', 
+                                            precision = 56, 
+                                            prefix = True, 
+                                            symbol = '0', ), 
+                                        original_diff = 1.337, 
+                                        original_unitprice = 1.337, 
+                                        original_unitvalue = 1.337, 
+                                        original_valuation = 1.337, 
+                                        portfolio_share = 1.337, 
+                                        prev_diff = 1.337, 
+                                        prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                        quantity = 1.337, 
+                                        source = '0', 
+                                        unitprice = 1.337, 
+                                        unitvalue = 1.337, 
+                                        valuation = 1.337, 
+                                        vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                    ], 
+                                total = 1.337, )
+                            ], 
+                        last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                            account_label = '0', 
+                            available_amount = 1.337, 
+                            contact_name = '0', 
+                            duration = 56, 
+                            id = 56, 
+                            id_account = 56, 
+                            insurance_label = '0', 
+                            last_payment_amount = 1.337, 
+                            last_payment_date = '0', 
+                            maturity_date = '0', 
+                            nb_payments_done = 56, 
+                            nb_payments_left = 56, 
+                            nb_payments_total = 56, 
+                            next_payment_amount = 1.337, 
+                            next_payment_date = '0', 
+                            rate = 1.337, 
+                            subscription_date = '0', 
+                            total_amount = 1.337, 
+                            type = '0', 
+                            used_amount = 1.337, ), 
+                        name = '0', 
+                        number = '0', 
+                        original_name = '0', 
+                        ownership = '0', 
+                        recipients = [
+                            budgea.models.recipient.Recipient(
+                                add_verified = True, 
+                                bank_name = '0', 
+                                category = '0', 
+                                deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                error = '0', 
+                                expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                fields = '0', 
+                                iban = '0', 
+                                id = 56, 
+                                id_account = 56, 
+                                id_target_account = 56, 
+                                label = '0', 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                state = '0', 
+                                time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                webid = '0', )
+                            ], 
+                        transactions = [
+                            budgea.models.transaction.Transaction(
+                                active = True, 
+                                application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                card = '0', 
+                                category = budgea.models.category.Category(
+                                    accountant_account = '0', 
+                                    color = '0', 
+                                    hidden = True, 
+                                    id = 56, 
+                                    id_logo = 56, 
+                                    id_parent_category = 56, 
+                                    id_parent_category_in_menu = 56, 
+                                    id_user = 56, 
+                                    income = True, 
+                                    name = '0', 
+                                    name_displayed = '0', 
+                                    refundable = True, ), 
+                                coming = True, 
+                                comment = '0', 
+                                commission = 1.337, 
+                                commission_currency = budgea.models.currency.Currency(
+                                    crypto = True, 
+                                    datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    id = '0', 
+                                    marketcap = 1.337, 
+                                    name = '0', 
+                                    precision = 56, 
+                                    prefix = True, 
+                                    symbol = '0', ), 
+                                counterparty = '0', 
+                                country = '0', 
+                                date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                documents_count = 56, 
+                                formatted_value = '0', 
+                                gross_value = 1.337, 
+                                id = 56, 
+                                id_account = 56, 
+                                id_category = 56, 
+                                id_cluster = 56, 
+                                informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                    total = 1.337, 
+                                    transactioninformations = [
+                                        budgea.models.transaction_information.TransactionInformation(
+                                            id = 56, 
+                                            id_transaction = 56, 
+                                            key = '0', 
+                                            value = '0', )
+                                        ], ), 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                nature = '0', 
+                                new = True, 
+                                nopurge = 56, 
+                                original_gross_value = 1.337, 
+                                original_value = 1.337, 
+                                original_wording = '0', 
+                                rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                simplified_wording = '0', 
+                                state = '0', 
+                                stemmed_wording = '0', 
+                                type = 'card', 
+                                value = 1.337, 
+                                vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                webid = '0', 
+                                wording = '0', )
+                            ], 
+                        transfers = [
+                            budgea.models.transfer.Transfer(
+                                account_balance = 1.337, 
+                                account_iban = '0', 
+                                amount = 1.337, 
+                                beneficiary_label = '0', 
+                                beneficiary_number = '0', 
+                                beneficiary_type = '0', 
+                                error = '0', 
+                                exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                fees = 1.337, 
+                                id = 56, 
+                                id_account = 56, 
+                                id_recipient = 56, 
+                                id_transaction = 56, 
+                                id_user = 56, 
+                                label = '0', 
+                                recipient_iban = '0', 
+                                register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                state = '0', 
+                                validate_mechanism = '0', 
+                                webid = '0', )
+                            ], 
+                        type = '0', 
+                        usage = '0', 
+                        webid = '0', )
+                    ]', jsonSchema='{
+  "type" : "array",
+  "items" : {
+    "$ref" : "#/components/schemas/ConnectionAccount"
+  }
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=false, isContainer=true, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=true, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=CodegenProperty{openApiType='ConnectionAccount', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='ConnectionAccount', datatypeWithEnum='ConnectionAccount', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='ConnectionAccount', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_account.ConnectionAccount(
+                    balance = 1.337, 
+                    bic = '0', 
+                    bookmarked = 56, 
+                    coming = 1.337, 
+                    coming_balance = 1.337, 
+                    company_name = '0', 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = True, 
+                    display = True, 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    iban = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_parent = 56, 
+                    id_source = 56, 
+                    id_type = 56, 
+                    id_user = 56, 
+                    investments = [
+                        budgea.models.user_investments.UserInvestments(
+                            investments = [
+                                budgea.models.investment.Investment(
+                                    code = '0', 
+                                    code_type = '0', 
+                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    description = '0', 
+                                    diff = 1.337, 
+                                    diff_percent = 1.337, 
+                                    id = 56, 
+                                    id_account = 56, 
+                                    id_security = 56, 
+                                    label = '0', 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    original_currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    original_diff = 1.337, 
+                                    original_unitprice = 1.337, 
+                                    original_unitvalue = 1.337, 
+                                    original_valuation = 1.337, 
+                                    portfolio_share = 1.337, 
+                                    prev_diff = 1.337, 
+                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                    quantity = 1.337, 
+                                    source = '0', 
+                                    unitprice = 1.337, 
+                                    unitvalue = 1.337, 
+                                    valuation = 1.337, 
+                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                ], 
+                            total = 1.337, )
+                        ], 
+                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                        account_label = '0', 
+                        available_amount = 1.337, 
+                        contact_name = '0', 
+                        duration = 56, 
+                        id = 56, 
+                        id_account = 56, 
+                        insurance_label = '0', 
+                        last_payment_amount = 1.337, 
+                        last_payment_date = '0', 
+                        maturity_date = '0', 
+                        nb_payments_done = 56, 
+                        nb_payments_left = 56, 
+                        nb_payments_total = 56, 
+                        next_payment_amount = 1.337, 
+                        next_payment_date = '0', 
+                        rate = 1.337, 
+                        subscription_date = '0', 
+                        total_amount = 1.337, 
+                        type = '0', 
+                        used_amount = 1.337, ), 
+                    name = '0', 
+                    number = '0', 
+                    original_name = '0', 
+                    ownership = '0', 
+                    recipients = [
+                        budgea.models.recipient.Recipient(
+                            add_verified = True, 
+                            bank_name = '0', 
+                            category = '0', 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            fields = '0', 
+                            iban = '0', 
+                            id = 56, 
+                            id_account = 56, 
+                            id_target_account = 56, 
+                            label = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            webid = '0', )
+                        ], 
+                    transactions = [
+                        budgea.models.transaction.Transaction(
+                            active = True, 
+                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            card = '0', 
+                            category = budgea.models.category.Category(
+                                accountant_account = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                id_logo = 56, 
+                                id_parent_category = 56, 
+                                id_parent_category_in_menu = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                name = '0', 
+                                name_displayed = '0', 
+                                refundable = True, ), 
+                            coming = True, 
+                            comment = '0', 
+                            commission = 1.337, 
+                            commission_currency = budgea.models.currency.Currency(
+                                crypto = True, 
+                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                id = '0', 
+                                marketcap = 1.337, 
+                                name = '0', 
+                                precision = 56, 
+                                prefix = True, 
+                                symbol = '0', ), 
+                            counterparty = '0', 
+                            country = '0', 
+                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            documents_count = 56, 
+                            formatted_value = '0', 
+                            gross_value = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_category = 56, 
+                            id_cluster = 56, 
+                            informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                total = 1.337, 
+                                transactioninformations = [
+                                    budgea.models.transaction_information.TransactionInformation(
+                                        id = 56, 
+                                        id_transaction = 56, 
+                                        key = '0', 
+                                        value = '0', )
+                                    ], ), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            nature = '0', 
+                            new = True, 
+                            nopurge = 56, 
+                            original_gross_value = 1.337, 
+                            original_value = 1.337, 
+                            original_wording = '0', 
+                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            simplified_wording = '0', 
+                            state = '0', 
+                            stemmed_wording = '0', 
+                            type = 'card', 
+                            value = 1.337, 
+                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            webid = '0', 
+                            wording = '0', )
+                        ], 
+                    transfers = [
+                        budgea.models.transfer.Transfer(
+                            account_balance = 1.337, 
+                            account_iban = '0', 
+                            amount = 1.337, 
+                            beneficiary_label = '0', 
+                            beneficiary_number = '0', 
+                            beneficiary_type = '0', 
+                            error = '0', 
+                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            fees = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_recipient = 56, 
+                            id_transaction = 56, 
+                            id_user = 56, 
+                            label = '0', 
+                            recipient_iban = '0', 
+                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            validate_mechanism = '0', 
+                            webid = '0', )
+                        ], 
+                    type = '0', 
+                    usage = '0', 
+                    webid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionAccount"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, mostInnerItems=CodegenProperty{openApiType='ConnectionAccount', baseName='accounts', complexType='ConnectionAccount', getter='getAccounts', setter='setAccounts', description='null', dataType='ConnectionAccount', datatypeWithEnum='ConnectionAccount', dataFormat='null', name='accounts', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.accounts;', baseType='ConnectionAccount', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_account.ConnectionAccount(
+                    balance = 1.337, 
+                    bic = '0', 
+                    bookmarked = 56, 
+                    coming = 1.337, 
+                    coming_balance = 1.337, 
+                    company_name = '0', 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = True, 
+                    display = True, 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    iban = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_parent = 56, 
+                    id_source = 56, 
+                    id_type = 56, 
+                    id_user = 56, 
+                    investments = [
+                        budgea.models.user_investments.UserInvestments(
+                            investments = [
+                                budgea.models.investment.Investment(
+                                    code = '0', 
+                                    code_type = '0', 
+                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    description = '0', 
+                                    diff = 1.337, 
+                                    diff_percent = 1.337, 
+                                    id = 56, 
+                                    id_account = 56, 
+                                    id_security = 56, 
+                                    label = '0', 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    original_currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    original_diff = 1.337, 
+                                    original_unitprice = 1.337, 
+                                    original_unitvalue = 1.337, 
+                                    original_valuation = 1.337, 
+                                    portfolio_share = 1.337, 
+                                    prev_diff = 1.337, 
+                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                    quantity = 1.337, 
+                                    source = '0', 
+                                    unitprice = 1.337, 
+                                    unitvalue = 1.337, 
+                                    valuation = 1.337, 
+                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                ], 
+                            total = 1.337, )
+                        ], 
+                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                        account_label = '0', 
+                        available_amount = 1.337, 
+                        contact_name = '0', 
+                        duration = 56, 
+                        id = 56, 
+                        id_account = 56, 
+                        insurance_label = '0', 
+                        last_payment_amount = 1.337, 
+                        last_payment_date = '0', 
+                        maturity_date = '0', 
+                        nb_payments_done = 56, 
+                        nb_payments_left = 56, 
+                        nb_payments_total = 56, 
+                        next_payment_amount = 1.337, 
+                        next_payment_date = '0', 
+                        rate = 1.337, 
+                        subscription_date = '0', 
+                        total_amount = 1.337, 
+                        type = '0', 
+                        used_amount = 1.337, ), 
+                    name = '0', 
+                    number = '0', 
+                    original_name = '0', 
+                    ownership = '0', 
+                    recipients = [
+                        budgea.models.recipient.Recipient(
+                            add_verified = True, 
+                            bank_name = '0', 
+                            category = '0', 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            fields = '0', 
+                            iban = '0', 
+                            id = 56, 
+                            id_account = 56, 
+                            id_target_account = 56, 
+                            label = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            webid = '0', )
+                        ], 
+                    transactions = [
+                        budgea.models.transaction.Transaction(
+                            active = True, 
+                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            card = '0', 
+                            category = budgea.models.category.Category(
+                                accountant_account = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                id_logo = 56, 
+                                id_parent_category = 56, 
+                                id_parent_category_in_menu = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                name = '0', 
+                                name_displayed = '0', 
+                                refundable = True, ), 
+                            coming = True, 
+                            comment = '0', 
+                            commission = 1.337, 
+                            commission_currency = budgea.models.currency.Currency(
+                                crypto = True, 
+                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                id = '0', 
+                                marketcap = 1.337, 
+                                name = '0', 
+                                precision = 56, 
+                                prefix = True, 
+                                symbol = '0', ), 
+                            counterparty = '0', 
+                            country = '0', 
+                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            documents_count = 56, 
+                            formatted_value = '0', 
+                            gross_value = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_category = 56, 
+                            id_cluster = 56, 
+                            informations = budgea.models.user_transaction_informations.UserTransactionInformations(
+                                total = 1.337, 
+                                transactioninformations = [
+                                    budgea.models.transaction_information.TransactionInformation(
+                                        id = 56, 
+                                        id_transaction = 56, 
+                                        key = '0', 
+                                        value = '0', )
+                                    ], ), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            nature = '0', 
+                            new = True, 
+                            nopurge = 56, 
+                            original_gross_value = 1.337, 
+                            original_value = 1.337, 
+                            original_wording = '0', 
+                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            simplified_wording = '0', 
+                            state = '0', 
+                            stemmed_wording = '0', 
+                            type = 'card', 
+                            value = 1.337, 
+                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            webid = '0', 
+                            wording = '0', )
+                        ], 
+                    transfers = [
+                        budgea.models.transfer.Transfer(
+                            account_balance = 1.337, 
+                            account_iban = '0', 
+                            amount = 1.337, 
+                            beneficiary_label = '0', 
+                            beneficiary_number = '0', 
+                            beneficiary_type = '0', 
+                            error = '0', 
+                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            fees = 1.337, 
+                            id = 56, 
+                            id_account = 56, 
+                            id_recipient = 56, 
+                            id_transaction = 56, 
+                            id_user = 56, 
+                            label = '0', 
+                            recipient_iban = '0', 
+                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            validate_mechanism = '0', 
+                            webid = '0', )
+                        ], 
+                    type = '0', 
+                    usage = '0', 
+                    webid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionAccount"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Accounts', nameInSnakeCase='ACCOUNTS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='boolean', baseName='active', complexType='null', getter='getActive', setter='setActive', description='This connection is active and will be automatically synced', dataType='bool', datatypeWithEnum='bool', dataFormat='null', name='active', min='null', max='null', defaultValue='True', defaultValueWithParam=' = data.active;', baseType='bool', containerType='null', title='null', unescapedDescription='This connection is active and will be automatically synced', maxLength=null, minLength=null, pattern='null', example='True', jsonSchema='{
+  "type" : "boolean",
+  "description" : "This connection is active and will be automatically synced",
+  "default" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=true, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Active', nameInSnakeCase='ACTIVE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionBank', baseName='bank', complexType='ConnectionBank', getter='getBank', setter='setBank', description='null', dataType='ConnectionBank', datatypeWithEnum='ConnectionBank', dataFormat='null', name='bank', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.bank;', baseType='ConnectionBank', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_bank.ConnectionBank(
+                    account_types = [
+                        '0'
+                        ], 
+                    auth_mechanism = '0', 
+                    available_auth_mechanisms = [
+                        '0'
+                        ], 
+                    available_transfer_mechanisms = [
+                        '0'
+                        ], 
+                    beta = True, 
+                    capabilities = [
+                        '0'
+                        ], 
+                    categories = [
+                        '0'
+                        ], 
+                    charged = True, 
+                    code = '0', 
+                    color = '0', 
+                    document_type = [
+                        '0'
+                        ], 
+                    documents_type = [
+                        '0'
+                        ], 
+                    hidden = True, 
+                    id = 56, 
+                    months_to_fetch = '0', 
+                    name = '0', 
+                    restricted = True, 
+                    siret = '0', 
+                    slug = '0', 
+                    sync_frequency = '0', 
+                    transfer_beneficiary_types = [
+                        '0'
+                        ], 
+                    urls = [
+                        '0'
+                        ], 
+                    uuid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionBank"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Bank', nameInSnakeCase='BANK', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionBank', baseName='connector', complexType='ConnectionBank', getter='getConnector', setter='setConnector', description='null', dataType='ConnectionBank', datatypeWithEnum='ConnectionBank', dataFormat='null', name='connector', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.connector;', baseType='ConnectionBank', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_bank.ConnectionBank(
+                    account_types = [
+                        '0'
+                        ], 
+                    auth_mechanism = '0', 
+                    available_auth_mechanisms = [
+                        '0'
+                        ], 
+                    available_transfer_mechanisms = [
+                        '0'
+                        ], 
+                    beta = True, 
+                    capabilities = [
+                        '0'
+                        ], 
+                    categories = [
+                        '0'
+                        ], 
+                    charged = True, 
+                    code = '0', 
+                    color = '0', 
+                    document_type = [
+                        '0'
+                        ], 
+                    documents_type = [
+                        '0'
+                        ], 
+                    hidden = True, 
+                    id = 56, 
+                    months_to_fetch = '0', 
+                    name = '0', 
+                    restricted = True, 
+                    siret = '0', 
+                    slug = '0', 
+                    sync_frequency = '0', 
+                    transfer_beneficiary_types = [
+                        '0'
+                        ], 
+                    urls = [
+                        '0'
+                        ], 
+                    uuid = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionBank"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Connector', nameInSnakeCase='CONNECTOR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='connector_uuid', complexType='null', getter='getConnectorUuid', setter='setConnectorUuid', description='uuid of the connector (replaces id_connector)', dataType='str', datatypeWithEnum='str', dataFormat='null', name='connector_uuid', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.connector_uuid;', baseType='str', containerType='null', title='null', unescapedDescription='uuid of the connector (replaces id_connector)', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "description" : "uuid of the connector (replaces id_connector)"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='ConnectorUuid', nameInSnakeCase='CONNECTOR_UUID', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='created', complexType='null', getter='getCreated', setter='setCreated', description='Creation date', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='created', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.created;', baseType='datetime', containerType='null', title='null', unescapedDescription='Creation date', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "type" : "string",
+  "description" : "Creation date",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Created', nameInSnakeCase='CREATED', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='error', complexType='null', getter='getError', setter='setError', description='null', dataType='str', datatypeWithEnum='str', dataFormat='null', name='error', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.error;', baseType='str', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Error', nameInSnakeCase='ERROR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='error_message', complexType='null', getter='getErrorMessage', setter='setErrorMessage', description='If fail, error message received from bank or provider', dataType='str', datatypeWithEnum='str', dataFormat='null', name='error_message', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.error_message;', baseType='str', containerType='null', title='null', unescapedDescription='If fail, error message received from bank or provider', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "type" : "string",
+  "description" : "If fail, error message received from bank or provider",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='ErrorMessage', nameInSnakeCase='ERROR_MESSAGE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='expire', complexType='null', getter='getExpire', setter='setExpire', description='Expiration of the connection source. Used to purge the connection in case completion was not finished', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='expire', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.expire;', baseType='datetime', containerType='null', title='null', unescapedDescription='Expiration of the connection source. Used to purge the connection in case completion was not finished', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "type" : "string",
+  "description" : "Expiration of the connection source. Used to purge the connection in case completion was not finished",
+  "format" : "date-time",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Expire', nameInSnakeCase='EXPIRE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id', complexType='null', getter='getId', setter='setId', description='ID of connection', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id;', baseType='int', containerType='null', title='null', unescapedDescription='ID of connection', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of connection"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Id', nameInSnakeCase='ID', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_bank', complexType='null', getter='getIdBank', setter='setIdBank', description='null', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_bank', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_bank;', baseType='int', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdBank', nameInSnakeCase='ID_BANK', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_connector', complexType='null', getter='getIdConnector', setter='setIdConnector', description='ID of the related connector', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_connector', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_connector;', baseType='int', containerType='null', title='null', unescapedDescription='ID of the related connector', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of the related connector"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=true, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdConnector', nameInSnakeCase='ID_CONNECTOR', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_provider', complexType='null', getter='getIdProvider', setter='setIdProvider', description='null', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_provider', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_provider;', baseType='int', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdProvider', nameInSnakeCase='ID_PROVIDER', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='integer', baseName='id_user', complexType='null', getter='getIdUser', setter='setIdUser', description='ID of the related user', dataType='int', datatypeWithEnum='int', dataFormat='null', name='id_user', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.id_user;', baseType='int', containerType='null', title='null', unescapedDescription='ID of the related user', maxLength=null, minLength=null, pattern='null', example='56', jsonSchema='{
+  "type" : "integer",
+  "description" : "ID of the related user"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=true, isInteger=true, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='IdUser', nameInSnakeCase='ID_USER', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='ConnectionInformations', baseName='informations', complexType='ConnectionInformations', getter='getInformations', setter='setInformations', description='null', dataType='ConnectionInformations', datatypeWithEnum='ConnectionInformations', dataFormat='null', name='informations', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.informations;', baseType='ConnectionInformations', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_informations.ConnectionInformations(
+                    connections = [
+                        budgea.models.connection.Connection(
+                            accounts = [
+                                budgea.models.connection_account.ConnectionAccount(
+                                    balance = 1.337, 
+                                    bic = '0', 
+                                    bookmarked = 56, 
+                                    coming = 1.337, 
+                                    coming_balance = 1.337, 
+                                    company_name = '0', 
+                                    currency = budgea.models.currency.Currency(
+                                        crypto = True, 
+                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                        id = '0', 
+                                        marketcap = 1.337, 
+                                        name = '0', 
+                                        precision = 56, 
+                                        prefix = True, 
+                                        symbol = '0', ), 
+                                    deleted = '0', 
+                                    disabled = True, 
+                                    display = True, 
+                                    error = '0', 
+                                    formatted_balance = '0', 
+                                    iban = '0', 
+                                    id = 56, 
+                                    id_connection = 56, 
+                                    id_parent = 56, 
+                                    id_source = 56, 
+                                    id_type = 56, 
+                                    id_user = 56, 
+                                    investments = [
+                                        budgea.models.user_investments.UserInvestments(
+                                            investments = [
+                                                budgea.models.investment.Investment(
+                                                    code = '0', 
+                                                    code_type = '0', 
+                                                    deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                    description = '0', 
+                                                    diff = 1.337, 
+                                                    diff_percent = 1.337, 
+                                                    id = 56, 
+                                                    id_account = 56, 
+                                                    id_security = 56, 
+                                                    label = '0', 
+                                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                    original_currency = budgea.models.currency.Currency(
+                                                        crypto = True, 
+                                                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                        id = '0', 
+                                                        marketcap = 1.337, 
+                                                        name = '0', 
+                                                        precision = 56, 
+                                                        prefix = True, 
+                                                        symbol = '0', ), 
+                                                    original_diff = 1.337, 
+                                                    original_unitprice = 1.337, 
+                                                    original_unitvalue = 1.337, 
+                                                    original_valuation = 1.337, 
+                                                    portfolio_share = 1.337, 
+                                                    prev_diff = 1.337, 
+                                                    prev_vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                                    quantity = 1.337, 
+                                                    source = '0', 
+                                                    unitprice = 1.337, 
+                                                    unitvalue = 1.337, 
+                                                    valuation = 1.337, 
+                                                    vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), )
+                                                ], 
+                                            total = 1.337, )
+                                        ], 
+                                    last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                    loan = budgea.models.connection_account_loan.ConnectionAccountLoan(
+                                        account_label = '0', 
+                                        available_amount = 1.337, 
+                                        contact_name = '0', 
+                                        duration = 56, 
+                                        id = 56, 
+                                        id_account = 56, 
+                                        insurance_label = '0', 
+                                        last_payment_amount = 1.337, 
+                                        last_payment_date = '0', 
+                                        maturity_date = '0', 
+                                        nb_payments_done = 56, 
+                                        nb_payments_left = 56, 
+                                        nb_payments_total = 56, 
+                                        next_payment_amount = 1.337, 
+                                        next_payment_date = '0', 
+                                        rate = 1.337, 
+                                        subscription_date = '0', 
+                                        total_amount = 1.337, 
+                                        type = '0', 
+                                        used_amount = 1.337, ), 
+                                    name = '0', 
+                                    number = '0', 
+                                    original_name = '0', 
+                                    ownership = '0', 
+                                    recipients = [
+                                        budgea.models.recipient.Recipient(
+                                            add_verified = True, 
+                                            bank_name = '0', 
+                                            category = '0', 
+                                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            enabled_at = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            error = '0', 
+                                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            fields = '0', 
+                                            iban = '0', 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_target_account = 56, 
+                                            label = '0', 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            state = '0', 
+                                            time_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            webid = '0', )
+                                        ], 
+                                    transactions = [
+                                        budgea.models.transaction.Transaction(
+                                            active = True, 
+                                            application_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            bdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            card = '0', 
+                                            category = budgea.models.category.Category(
+                                                accountant_account = '0', 
+                                                color = '0', 
+                                                hidden = True, 
+                                                id = 56, 
+                                                id_logo = 56, 
+                                                id_parent_category = 56, 
+                                                id_parent_category_in_menu = 56, 
+                                                id_user = 56, 
+                                                income = True, 
+                                                name = '0', 
+                                                name_displayed = '0', 
+                                                refundable = True, ), 
+                                            coming = True, 
+                                            comment = '0', 
+                                            commission = 1.337, 
+                                            commission_currency = budgea.models.currency.Currency(
+                                                crypto = True, 
+                                                datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                                id = '0', 
+                                                marketcap = 1.337, 
+                                                name = '0', 
+                                                precision = 56, 
+                                                prefix = True, 
+                                                symbol = '0', ), 
+                                            counterparty = '0', 
+                                            country = '0', 
+                                            date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            date_scraped = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            deleted = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            documents_count = 56, 
+                                            formatted_value = '0', 
+                                            gross_value = 1.337, 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_category = 56, 
+                                            id_cluster = 56, 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            nature = '0', 
+                                            new = True, 
+                                            nopurge = 56, 
+                                            original_gross_value = 1.337, 
+                                            original_value = 1.337, 
+                                            original_wording = '0', 
+                                            rdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            simplified_wording = '0', 
+                                            state = '0', 
+                                            stemmed_wording = '0', 
+                                            type = 'card', 
+                                            value = 1.337, 
+                                            vdate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            webid = '0', 
+                                            wording = '0', )
+                                        ], 
+                                    transfers = [
+                                        budgea.models.transfer.Transfer(
+                                            account_balance = 1.337, 
+                                            account_iban = '0', 
+                                            amount = 1.337, 
+                                            beneficiary_label = '0', 
+                                            beneficiary_number = '0', 
+                                            beneficiary_type = '0', 
+                                            error = '0', 
+                                            exec_date = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            fees = 1.337, 
+                                            id = 56, 
+                                            id_account = 56, 
+                                            id_recipient = 56, 
+                                            id_transaction = 56, 
+                                            id_user = 56, 
+                                            label = '0', 
+                                            recipient_iban = '0', 
+                                            register_date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            state = '0', 
+                                            validate_mechanism = '0', 
+                                            webid = '0', )
+                                        ], 
+                                    type = '0', 
+                                    usage = '0', 
+                                    webid = '0', )
+                                ], 
+                            active = True, 
+                            bank = budgea.models.connection_bank.ConnectionBank(
+                                account_types = [
+                                    '0'
+                                    ], 
+                                auth_mechanism = '0', 
+                                available_auth_mechanisms = [
+                                    '0'
+                                    ], 
+                                available_transfer_mechanisms = [
+                                    '0'
+                                    ], 
+                                beta = True, 
+                                capabilities = [
+                                    '0'
+                                    ], 
+                                categories = [
+                                    '0'
+                                    ], 
+                                charged = True, 
+                                code = '0', 
+                                color = '0', 
+                                document_type = [
+                                    '0'
+                                    ], 
+                                documents_type = [
+                                    '0'
+                                    ], 
+                                hidden = True, 
+                                id = 56, 
+                                months_to_fetch = '0', 
+                                name = '0', 
+                                restricted = True, 
+                                siret = '0', 
+                                slug = '0', 
+                                sync_frequency = '0', 
+                                transfer_beneficiary_types = [
+                                    '0'
+                                    ], 
+                                urls = [
+                                    '0'
+                                    ], 
+                                uuid = '0', ), 
+                            connector = budgea.models.connection_bank.ConnectionBank(
+                                auth_mechanism = '0', 
+                                beta = True, 
+                                charged = True, 
+                                code = '0', 
+                                color = '0', 
+                                hidden = True, 
+                                id = 56, 
+                                months_to_fetch = '0', 
+                                name = '0', 
+                                restricted = True, 
+                                siret = '0', 
+                                slug = '0', 
+                                sync_frequency = '0', 
+                                uuid = '0', ), 
+                            connector_uuid = '0', 
+                            created = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            error = '0', 
+                            error_message = '0', 
+                            expire = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = 56, 
+                            id_bank = 56, 
+                            id_connector = 56, 
+                            id_provider = 56, 
+                            id_user = 56, 
+                            last_push = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            next_try = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            state = '0', 
+                            subscriptions = [
+                                budgea.models.connection_subscription.ConnectionSubscription(
+                                    balance = 1.337, 
+                                    deleted = '0', 
+                                    disabled = '0', 
+                                    documents = [
+                                        budgea.models.document.Document(
+                                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                            has_file_on_website = True, 
+                                            id = 56, 
+                                            id_category = 56, 
+                                            id_file = 56, 
+                                            id_subscription = 56, 
+                                            id_thumbnail = 56, 
+                                            id_type = 56, 
+                                            id_user = 56, 
+                                            income = True, 
+                                            issuer = '0', 
+                                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            name = '0', 
+                                            number = '0', 
+                                            readonly = True, 
+                                            thumb_url = '0', 
+                                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                            total_amount = 1.337, 
+                                            type = 'statement', 
+                                            untaxed_amount = 1.337, 
+                                            url = '0', 
+                                            vat = 1.337, )
+                                        ], 
+                                    error = '0', 
+                                    formatted_balance = '0', 
+                                    id = 56, 
+                                    id_connection = 56, 
+                                    id_source = 56, 
+                                    id_user = 56, 
+                                    label = '0', 
+                                    last_update = '0', 
+                                    number = '0', 
+                                    renewdate = '0', 
+                                    subscriber = '0', 
+                                    validity = '0', )
+                                ], )
+                        ], 
+                    total = 56, )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionInformations"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Informations', nameInSnakeCase='INFORMATIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='last_push', complexType='null', getter='getLastPush', setter='setLastPush', description='Last successful push', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='last_push', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.last_push;', baseType='datetime', containerType='null', title='last_push', unescapedDescription='Last successful push', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "last_push",
+  "type" : "string",
+  "description" : "Last successful push",
+  "format" : "date-time",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='LastPush', nameInSnakeCase='LAST_PUSH', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='last_update', complexType='null', getter='getLastUpdate', setter='setLastUpdate', description='Last successful update', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='last_update', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.last_update;', baseType='datetime', containerType='null', title='last_update', unescapedDescription='Last successful update', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "last_update",
+  "type" : "string",
+  "description" : "Last successful update",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='LastUpdate', nameInSnakeCase='LAST_UPDATE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='next_try', complexType='null', getter='getNextTry', setter='setNextTry', description='Date of next synchronization', dataType='datetime', datatypeWithEnum='datetime', dataFormat='date-time', name='next_try', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.next_try;', baseType='datetime', containerType='null', title='next_try', unescapedDescription='Date of next synchronization', maxLength=null, minLength=null, pattern='null', example='datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f')', jsonSchema='{
+  "title" : "next_try",
+  "type" : "string",
+  "description" : "Date of next synchronization",
+  "format" : "date-time"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=true, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='NextTry', nameInSnakeCase='NEXT_TRY', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='string', baseName='state', complexType='null', getter='getState', setter='setState', description='null', dataType='str', datatypeWithEnum='str', dataFormat='null', name='state', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.state;', baseType='str', containerType='null', title='state', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example=''0'', jsonSchema='{
+  "title" : "state",
+  "type" : "string",
+  "nullable" : true
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=true, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=true, isModel=false, isContainer=false, isString=true, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=true, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='State', nameInSnakeCase='STATE', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, CodegenProperty{openApiType='array', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='list[ConnectionSubscription]', datatypeWithEnum='list[ConnectionSubscription]', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='list', containerType='array', title='subscriptions', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='[
+                    budgea.models.connection_subscription.ConnectionSubscription(
+                        balance = 1.337, 
+                        currency = budgea.models.currency.Currency(
+                            crypto = True, 
+                            datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            id = '0', 
+                            marketcap = 1.337, 
+                            name = '0', 
+                            precision = 56, 
+                            prefix = True, 
+                            symbol = '0', ), 
+                        deleted = '0', 
+                        disabled = '0', 
+                        documents = [
+                            budgea.models.document.Document(
+                                date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                                has_file_on_website = True, 
+                                id = 56, 
+                                id_category = 56, 
+                                id_file = 56, 
+                                id_subscription = 56, 
+                                id_thumbnail = 56, 
+                                id_type = 56, 
+                                id_user = 56, 
+                                income = True, 
+                                issuer = '0', 
+                                last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                name = '0', 
+                                number = '0', 
+                                readonly = True, 
+                                thumb_url = '0', 
+                                timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                                total_amount = 1.337, 
+                                type = 'statement', 
+                                untaxed_amount = 1.337, 
+                                url = '0', 
+                                vat = 1.337, )
+                            ], 
+                        error = '0', 
+                        formatted_balance = '0', 
+                        id = 56, 
+                        id_connection = 56, 
+                        id_source = 56, 
+                        id_user = 56, 
+                        label = '0', 
+                        last_update = '0', 
+                        number = '0', 
+                        renewdate = '0', 
+                        subscriber = '0', 
+                        validity = '0', )
+                    ]', jsonSchema='{
+  "title" : "subscriptions",
+  "type" : "array",
+  "items" : {
+    "$ref" : "#/components/schemas/ConnectionSubscription"
+  }
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=false, isContainer=true, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=true, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=CodegenProperty{openApiType='ConnectionSubscription', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='ConnectionSubscription', datatypeWithEnum='ConnectionSubscription', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='ConnectionSubscription', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_subscription.ConnectionSubscription(
+                    balance = 1.337, 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = '0', 
+                    documents = [
+                        budgea.models.document.Document(
+                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            has_file_on_website = True, 
+                            id = 56, 
+                            id_category = 56, 
+                            id_file = 56, 
+                            id_subscription = 56, 
+                            id_thumbnail = 56, 
+                            id_type = 56, 
+                            id_user = 56, 
+                            income = True, 
+                            issuer = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            name = '0', 
+                            number = '0', 
+                            readonly = True, 
+                            thumb_url = '0', 
+                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            total_amount = 1.337, 
+                            type = 'statement', 
+                            untaxed_amount = 1.337, 
+                            url = '0', 
+                            vat = 1.337, )
+                        ], 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_source = 56, 
+                    id_user = 56, 
+                    label = '0', 
+                    last_update = '0', 
+                    number = '0', 
+                    renewdate = '0', 
+                    subscriber = '0', 
+                    validity = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionSubscription"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, mostInnerItems=CodegenProperty{openApiType='ConnectionSubscription', baseName='subscriptions', complexType='ConnectionSubscription', getter='getSubscriptions', setter='setSubscriptions', description='null', dataType='ConnectionSubscription', datatypeWithEnum='ConnectionSubscription', dataFormat='null', name='subscriptions', min='null', max='null', defaultValue='null', defaultValueWithParam=' = data.subscriptions;', baseType='ConnectionSubscription', containerType='null', title='null', unescapedDescription='null', maxLength=null, minLength=null, pattern='null', example='budgea.models.connection_subscription.ConnectionSubscription(
+                    balance = 1.337, 
+                    currency = budgea.models.currency.Currency(
+                        crypto = True, 
+                        datetime = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                        id = '0', 
+                        marketcap = 1.337, 
+                        name = '0', 
+                        precision = 56, 
+                        prefix = True, 
+                        symbol = '0', ), 
+                    deleted = '0', 
+                    disabled = '0', 
+                    documents = [
+                        budgea.models.document.Document(
+                            date = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            duedate = datetime.datetime.strptime('1975-12-30', '%Y-%m-%d').date(), 
+                            has_file_on_website = True, 
+                            id = 56, 
+                            id_category = 56, 
+                            id_file = 56, 
+                            id_subscription = 56, 
+                            id_thumbnail = 56, 
+                            id_type = 56, 
+                            id_user = 56, 
+                            income = True, 
+                            issuer = '0', 
+                            last_update = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            name = '0', 
+                            number = '0', 
+                            readonly = True, 
+                            thumb_url = '0', 
+                            timestamp = datetime.datetime.strptime('2013-10-20 19:20:30.00', '%Y-%m-%d %H:%M:%S.%f'), 
+                            total_amount = 1.337, 
+                            type = 'statement', 
+                            untaxed_amount = 1.337, 
+                            url = '0', 
+                            vat = 1.337, )
+                        ], 
+                    error = '0', 
+                    formatted_balance = '0', 
+                    id = 56, 
+                    id_connection = 56, 
+                    id_source = 56, 
+                    id_user = 56, 
+                    label = '0', 
+                    last_update = '0', 
+                    number = '0', 
+                    renewdate = '0', 
+                    subscriber = '0', 
+                    validity = '0', )', jsonSchema='{
+  "$ref" : "#/components/schemas/ConnectionSubscription"
+}', minimum='null', maximum='null', exclusiveMinimum=false, exclusiveMaximum=false, hasMore=false, required=false, deprecated=false, secondaryParam=false, hasMoreNonReadOnly=false, isPrimitiveType=false, isModel=true, isContainer=false, isString=false, isNumeric=false, isInteger=false, isLong=false, isNumber=false, isFloat=false, isDouble=false, isByteArray=false, isBinary=false, isFile=false, isBoolean=false, isDate=false, isDateTime=false, isUuid=false, isUri=false, isEmail=false, isFreeFormObject=false, isListContainer=false, isMapContainer=false, isEnum=false, isReadOnly=false, isWriteOnly=false, isNullable=false, isSelfReference=false, isCircularReference=false, _enum=null, allowableValues=null, items=null, mostInnerItems=null, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}, vendorExtensions={}, hasValidation=false, isInherited=false, discriminatorValue='null', nameInCamelCase='Subscriptions', nameInSnakeCase='SUBSCRIPTIONS', enumName='null', maxItems=null, minItems=null, maxProperties=null, minProperties=null, uniqueItems=false, multipleOf=null, isXmlAttribute=false, xmlPrefix='null', xmlName='null', xmlNamespace='null', isXmlWrapped=false}], parentVars=[], allowableValues=null, mandatory=[active, id, id_connector], allMandatory=[active, id, id_connector], imports=[ConnectionAccount, ConnectionBank, ConnectionInformations, ConnectionSubscription], hasVars=true, emptyVars=false, hasMoreModels=false, hasEnums=false, isEnum=false, isNullable=false, hasRequired=true, hasOptional=true, isArrayModel=false, hasChildren=false, isMapModel=false, hasOnlyReadOnly=false, externalDocumentation=null, vendorExtensions={}, additionalPropertiesType='null', maxProperties=null, minProperties=null, uniqueItems=false, maxItems=null, minItems=null, maxLength=null, minLength=null, exclusiveMinimum=false, exclusiveMaximum=false, minimum='null', maximum='null', pattern='null', multipleOf='null'}
+"""
+
+
+class ConnectionSchema(Schema):
+    """NOTE: This class is auto generated by OpenAPI Generator.
+    Ref: https://openapi-generator.tech
+
+    Do not edit the class manually.
+    """
+    accounts = marshmallow.fields.List(budgea.fields.Nested('ConnectionAccount')('ConnectionAccountSchema', )
+,)
+
+    active = marshmallow.fields.Boolean(required=True)
+
+    bank = budgea.fields.Nested('ConnectionBank')('ConnectionBankSchema', )
+
+    connector = budgea.fields.Nested('ConnectionBank')('ConnectionBankSchema', )
+
+    connector_uuid = marshmallow.fields.String()
+
+    created = budgea.fields.DateTime()
+
+    error = marshmallow.fields.String(allow_none=True)
+
+    error_message = marshmallow.fields.String(allow_none=True)
+
+    expire = budgea.fields.DateTime(allow_none=True)
+
+    id = marshmallow.fields.Integer(required=True)
+
+    id_bank = marshmallow.fields.Integer()
+
+    id_connector = marshmallow.fields.Integer(required=True)
+
+    id_provider = marshmallow.fields.Integer()
+
+    id_user = marshmallow.fields.Integer()
+
+    informations = budgea.fields.Nested('ConnectionInformations')('ConnectionInformationsSchema', )
+
+    last_push = budgea.fields.DateTime(allow_none=True)
+
+    last_update = budgea.fields.DateTime()
+
+    next_try = budgea.fields.DateTime()
+
+    state = marshmallow.fields.String(allow_none=True)
+
+    subscriptions = marshmallow.fields.List(budgea.fields.Nested('ConnectionSubscription')('ConnectionSubscriptionSchema', )
+,)
+
+    @validates("accounts")
+    def validates_accounts(self, accounts):
+        pass
+
+    @validates("active")
+    def validates_active(self, active):
+        if active is None:  # noqa: E501
+            raise ValidationError("Invalid value for `active`, must not be `None`")  # noqa: E501
+        pass
+
+    @validates("bank")
+    def validates_bank(self, bank):
+        pass
+
+    @validates("connector")
+    def validates_connector(self, connector):
+        pass
+
+    @validates("connector_uuid")
+    def validates_connector_uuid(self, connector_uuid):
+        pass
+
+    @validates("created")
+    def validates_created(self, created):
+        pass
+
+    @validates("error")
+    def validates_error(self, error):
+        pass
+
+    @validates("error_message")
+    def validates_error_message(self, error_message):
+        pass
+
+    @validates("expire")
+    def validates_expire(self, expire):
+        pass
+
+    @validates("id")
+    def validates_id(self, id):
+        if id is None:  # noqa: E501
+            raise ValidationError("Invalid value for `id`, must not be `None`")  # noqa: E501
+        pass
+
+    @validates("id_bank")
+    def validates_id_bank(self, id_bank):
+        pass
+
+    @validates("id_connector")
+    def validates_id_connector(self, id_connector):
+        if id_connector is None:  # noqa: E501
+            raise ValidationError("Invalid value for `id_connector`, must not be `None`")  # noqa: E501
+        pass
+
+    @validates("id_provider")
+    def validates_id_provider(self, id_provider):
+        pass
+
+    @validates("id_user")
+    def validates_id_user(self, id_user):
+        pass
+
+    @validates("informations")
+    def validates_informations(self, informations):
+        pass
+
+    @validates("last_push")
+    def validates_last_push(self, last_push):
+        pass
+
+    @validates("last_update")
+    def validates_last_update(self, last_update):
+        pass
+
+    @validates("next_try")
+    def validates_next_try(self, next_try):
+        pass
+
+    @validates("state")
+    def validates_state(self, state):
+        pass
+
+    @validates("subscriptions")
+    def validates_subscriptions(self, subscriptions):
+        pass
+
+    @post_load
+    def post_load(self, data, **kwargs):
+        config = Configuration()
+        config.client_side_validation = False
+        return Connection(local_vars_configuration=config, **data)
+
+
+class Connection(object):
+    """NOTE: This class is auto generated by OpenAPI Generator.
+    Ref: https://openapi-generator.tech
+
+    Do not edit the class manually.
+    """
+
+    """
+    Attributes:
+      openapi_types (dict): The key is attribute name
+                            and the value is attribute type.
+      attribute_map (dict): The key is attribute name
+                            and the value is json key in definition.
+    """
+    openapi_types = {
+        'accounts': 'list[ConnectionAccount]',
+        'active': 'bool',
+        'bank': 'ConnectionBank',
+        'connector': 'ConnectionBank',
+        'connector_uuid': 'str',
+        'created': 'datetime',
+        'error': 'str',
+        'error_message': 'str',
+        'expire': 'datetime',
+        'id': 'int',
+        'id_bank': 'int',
+        'id_connector': 'int',
+        'id_provider': 'int',
+        'id_user': 'int',
+        'informations': 'ConnectionInformations',
+        'last_push': 'datetime',
+        'last_update': 'datetime',
+        'next_try': 'datetime',
+        'state': 'str',
+        'subscriptions': 'list[ConnectionSubscription]'
+    }
+
+    attribute_map = {
+        'accounts': 'accounts',
+        'active': 'active',
+        'bank': 'bank',
+        'connector': 'connector',
+        'connector_uuid': 'connector_uuid',
+        'created': 'created',
+        'error': 'error',
+        'error_message': 'error_message',
+        'expire': 'expire',
+        'id': 'id',
+        'id_bank': 'id_bank',
+        'id_connector': 'id_connector',
+        'id_provider': 'id_provider',
+        'id_user': 'id_user',
+        'informations': 'informations',
+        'last_push': 'last_push',
+        'last_update': 'last_update',
+        'next_try': 'next_try',
+        'state': 'state',
+        'subscriptions': 'subscriptions'
+    }
+
+    def __init__(self, accounts=missing, active=True, bank=missing, connector=missing, connector_uuid=missing, created=missing, error=missing, error_message=missing, expire=missing, id=missing, id_bank=missing, id_connector=missing, id_provider=missing, id_user=missing, informations=missing, last_push=missing, last_update=missing, next_try=missing, state=missing, subscriptions=missing, local_vars_configuration=None):  # noqa: E501
+        """Connection - a model defined in OpenAPI"""  # noqa: E501
+        if local_vars_configuration is None:
+            local_vars_configuration = Configuration()
+        self.local_vars_configuration = local_vars_configuration
+
+        self.discriminator = None
+        if self.local_vars_configuration.client_side_validation:
+            validated = ConnectionSchema().load({
+                'accounts': accounts,
+                'active': active,
+                'bank': bank,
+                'connector': connector,
+                'connector_uuid': connector_uuid,
+                'created': created,
+                'error': error,
+                'error_message': error_message,
+                'expire': expire,
+                'id': id,
+                'id_bank': id_bank,
+                'id_connector': id_connector,
+                'id_provider': id_provider,
+                'id_user': id_user,
+                'informations': informations,
+                'last_push': last_push,
+                'last_update': last_update,
+                'next_try': next_try,
+                'state': state,
+                'subscriptions': subscriptions
+            })
+            self.accounts = validated.accounts
+            self.active = validated.active
+            self.bank = validated.bank
+            self.connector = validated.connector
+            self.connector_uuid = validated.connector_uuid
+            self.created = validated.created
+            self.error = validated.error
+            self.error_message = validated.error_message
+            self.expire = validated.expire
+            self.id = validated.id
+            self.id_bank = validated.id_bank
+            self.id_connector = validated.id_connector
+            self.id_provider = validated.id_provider
+            self.id_user = validated.id_user
+            self.informations = validated.informations
+            self.last_push = validated.last_push
+            self.last_update = validated.last_update
+            self.next_try = validated.next_try
+            self.state = validated.state
+            self.subscriptions = validated.subscriptions
+        else:
+            self.accounts = accounts
+            self.active = active
+            self.bank = bank
+            self.connector = connector
+            self.connector_uuid = connector_uuid
+            self.created = created
+            self.error = error
+            self.error_message = error_message
+            self.expire = expire
+            self.id = id
+            self.id_bank = id_bank
+            self.id_connector = id_connector
+            self.id_provider = id_provider
+            self.id_user = id_user
+            self.informations = informations
+            self.last_push = last_push
+            self.last_update = last_update
+            self.next_try = next_try
+            self.state = state
+            self.subscriptions = subscriptions
+
+    def to_dict(self):
+        """Returns the model properties as a dict"""
+        return ConnectionSchema().dump(self)
+
+    def to_str(self):
+        """Returns the string representation of the model"""
+        return pprint.pformat(self.to_dict())
+
+    def __repr__(self):
+        """For `print` and `pprint`"""
+        return self.to_str()
+
+    def __eq__(self, other):
+        """Returns true if both objects are equal"""
+        if not isinstance(other, Connection):
+            return False
+
+        return self.to_dict() == other.to_dict()
+
+    def __ne__(self, other):
+        """Returns true if both objects are not equal"""
+        if not isinstance(other, Connection):
+            return True
+
+        return self.to_dict() != other.to_dict()
