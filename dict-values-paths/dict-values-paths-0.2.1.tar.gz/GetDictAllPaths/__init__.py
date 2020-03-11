@@ -1,0 +1,1 @@
+from GetDictAllPaths.getDictAllPaths import AllDictData
