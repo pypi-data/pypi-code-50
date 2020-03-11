@@ -1,0 +1,346 @@
+"""
+To test this module, launch emu, then
+
+from birdy import native_client
+emu = native_client('http://127.0.0.1:5000/')
+emu.hello('Carsten')
+---
+emu.wordcounter('http://www.gutenberg.org/cache/epub/19033/pg19033.txt')
+"""
+
+import os
+import types
+import wrapt
+from funcsigs import signature  # Py2 Py3 would be from inspect import signature
+from collections import OrderedDict
+from owslib.wps import ComplexDataInput
+from birdy.cli.base import BirdyCLI
+from owslib.wps import WebProcessingService
+import six
+
+# TODO: Deal with authorizations
+def native_client(url, name=None, processes=None, asobject=False):
+    """Return a module with functions calling the WPS processes
+     available at the given url.
+
+    Parameters
+    ----------
+    url : str
+      Link to WPS provider.
+    name : None
+      Module name. Overrides WPS identification is provided.
+    processes : None
+      List of process names to fetch. If None, all processes will be imported.
+    asobject : False
+      If True, the client will download the output reference url and try to
+      convert it to a know python object. If the mimetype is unknown, a bytes
+      object will be returned.
+
+
+    Returns
+    -------
+    out : module
+      A module where WPS processes can be called using normal python functions.
+
+
+    Example
+    -------
+    >>> emu = native_client('<url for emu wps server>')
+    >>> emu.hello('stranger')
+    'Hello stranger'
+
+    """
+    bm = BirdyMod(name=name, url=url, asobject=asobject)
+
+    # Create module with name from WPS identification.
+    mod = types.ModuleType(name or bm.wps.identification.title.split()[0].lower(), bm.wps.identification.abstract)
+
+    if processes is None:
+        for pid, func in bm.build_module():
+            mod.__dict__[pid] = func
+    else:
+        if type(processes) in six.string_types:
+            processes = [processes,]
+
+        for p in processes:
+            mod.__dict__[p] = bm.build_function_sig(p)
+
+    return mod
+
+
+class BirdyMod:
+    """
+    Construct functions out of WPS processes so they behave as native python functions.
+    """
+    def __init__(self, name=None, url=None, asobject=False, xml=None):
+
+        self.url = os.environ.get('WPS_SERVICE') or url
+        self.xml = xml
+        self.wps = WebProcessingService(self.url, verify=True, skip_caps=True)
+        self.wps.getcapabilities()
+        self.processes = OrderedDict()
+        self.name = name
+        self.asobject = asobject
+
+        # Store the process description returned by wps.describeprocess.
+        self.inputs = {}
+        self.outputs = {}
+
+    def build_module(self):
+        """Yield the sequence of functions representing WPS processes. """
+        for process in self.wps.processes:
+            yield process.identifier, self.build_function(process.identifier)
+
+    def build_function(self, pid):
+        """Create a custom function signature with docstring, instantiate it
+        and pass it to a wrapper which will actually call the process."""
+
+        # Get the process metadata.
+        self.processes[pid] = proc = self.wps.describeprocess(pid)
+        self.inputs[pid] = OrderedDict()
+        self.outputs[pid] = OrderedDict()
+
+        # Create a dummy signature and docstring for the function.
+        sig = self.build_function_sig(proc)
+        doc = self.build_doc(proc)
+
+        # Create function in the local scope and assign docstring.
+        exec(sig)
+        f = locals()[pid]
+        f.__doc__ = doc
+
+        # Decorate, note that it's the decorator who's calling `execute`.
+        return self.decorate()(f)
+
+    def decorate(self):
+        """Decorator calling the WPS, using the arguments passed to the wrapped function.
+        The wrapped function is a dummy used only for its signature and docstring.
+
+        The wrapt.decorator is used to retain the dummy function name and docstring.
+        """
+
+        @wrapt.decorator
+        def wrapper(wrapped, instance, args, kwds):
+            """Bind the function's arguments to the signature and execute the request.
+
+            Parameters
+            ----------
+            wrapped : function
+              Dummy function whose signature is used to map positional arguments to input identifiers.
+            instance : object
+              None in this case. This is required by the wrapt.decorator.
+
+
+            Notes
+            -----
+            Positional and keyword arguments are all mapped to keyword arguments according
+            to the dummy function's signature. These keyword arguments are then passed to
+            `execute`.
+            """
+            sig = signature(wrapped)
+            ba = sig.bind(*args, **kwds)
+            out = self.execute(wrapped.__name__, **ba.arguments)
+            return out
+
+        return wrapper
+
+    def execute(self, identifier, **kwds):
+        """Sends an execute request to the WPS server.
+
+        Parameters
+        ----------
+        identifier : str
+          Process identifier.
+
+        kwds : {}
+          Process input dictionary, keyed by input identifier. Type conversion,
+          for example to `ComplexDataInput` is done within this method.
+
+        Notes
+        -----
+
+        """
+        from owslib.wps import SYNC
+
+        inputs = []
+        for key, values in kwds.items():
+            inp = self.inputs[identifier][key]
+
+            # Input type conversion
+            typ = BirdyCLI.get_param_type(inp)
+            if values is not None:
+                values = typ.convert(values, key, None)
+
+            if isinstance(values, ComplexDataInput):
+                inputs.append(("{}".format(key), values))
+            else:
+                inputs.append(("{}".format(key), "{}".format(values)))
+
+        outputs = self.build_output(self.processes[identifier])
+
+        # Execute request in synchronous mode
+        resp = self.wps.execute(identifier=identifier, inputs=inputs, output=outputs, mode=SYNC)
+
+        # Output type conversion
+        out = []
+        for o in resp.processOutputs:
+            out.append(self.process_output(o))
+
+        return self.delist(out)
+
+
+    @staticmethod
+    def delist(val):
+        """Return list item if list contains only one element."""
+        if type(val) == list and len(val) == 1:
+            return val[0]
+        else:
+            return val
+
+    def process_output(self, out):
+        """Process the output response, whether it is actual data or a URL to a file."""
+
+        # Get the data for recognized types.
+        if out.data:
+            typ = BirdyCLI.get_param_type(out)
+            data = [typ.convert(d, out.identifier, None) for d in out.data]
+            return self.delist(data)
+
+        # Try to convert the bytes to an object.
+        if self.asobject:
+            data = out.retrieveData()
+
+            conv = self.converter(out) or str
+            return conv(data)
+
+        # Return the URL.
+        else:
+            return out.reference
+
+
+    @staticmethod
+    def converter(o):
+        """Convert if possible a bytes object to a known python object."""
+        if o.mimeType in ['application/x-netcdf']:
+            import netCDF4 as nc
+            if nc.getlibversion() > '4.5':
+                return lambda x: nc.Dataset(o.fileName, memory=x)
+            else:
+                return None
+
+        if o.mimeType in ['application/json']:
+            import json
+            return json.loads
+
+        else:
+            return None
+
+    def build_function_sig(self, process):
+        """Return the process function signature."""
+
+        template = "\ndef {}({}):\n    pass"
+
+        args, kwds = self.get_args(process)
+
+        return template.format(
+            process.identifier,
+            ', '.join(args + ['{}={}'.format(k, repr(v)) for k, v in kwds.items()]))
+
+    def get_args(self, process):
+        """Return a list of positional arguments and a dictionary of optional keyword arguments
+        with their default values."""
+
+        args = []
+        kwds = OrderedDict()
+        for inp in process.dataInputs:
+
+            # Store for future reference. See `execute`.
+            self.inputs[process.identifier][inp.identifier] = inp
+
+            default = BirdyCLI.get_param_default(inp)
+            if default is None:
+                args.append(inp.identifier)
+            else:
+                kwds[inp.identifier] = default
+
+        for output in process.processOutputs:
+            # Store for future reference. See `execute`.
+
+            self.outputs[process.identifier][output.identifier] = output
+
+        return args, kwds
+
+    def build_output(self, process):
+        """Return output list."""
+        return [(k, v.dataType == 'ComplexData') for k, v in self.outputs[process.identifier].items()]
+
+    def build_doc(self, process):
+        """Return function docstring built from WPS metadata."""
+
+        doc = list([3 * '\"'])
+        doc.append(process.abstract)
+        doc.append('')
+
+        # Inputs
+        if process.dataInputs:
+            doc.append('Parameters')
+            doc.append('----------')
+            for i in process.dataInputs:
+                doc.append("{} : {}".format(i.identifier, self.fmt_type(i)))
+                doc.append("    {}".format(i.abstract or i.title))
+                # if i.metadata:
+                #    doc[-1] += " ({})".format(', '.join(['`{} <{}>`_'.format(m.title, m.href) for m in i.metadata]))
+            doc.append('')
+
+        # Outputs
+        if process.processOutputs:
+            doc.append("Returns")
+            doc.append("-------")
+            for i in process.processOutputs:
+                doc.append("{} : {}".format(i.identifier, self.fmt_type(i)))
+                doc.append("    {}".format(i.abstract or i.title))
+
+        doc.extend(['', ''])
+        doc.append(3 * '\"')
+        return '\n'.join(doc)
+
+    @staticmethod
+    def fmt_type(obj):
+        """Input and output type formatting (type, default and allowed
+        values).
+        """
+        nmax = 10
+
+        doc = ''
+        try:
+            if getattr(obj, 'allowedValues', None):
+                av = ', '.join(["'{}'".format(i) for i in obj.allowedValues[:nmax]])
+                if len(obj.allowedValues) > nmax:
+                    av += ', ...'
+
+                doc += "{" + av + "}"
+
+            elif getattr(obj, 'dataType', None):
+                doc += obj.dataType
+
+            elif getattr(obj, 'supportedValues', None):
+                doc += ', '.join([':mimetype:`{}`'.format(f.mimeType) for f in obj.supportedValues])
+
+            elif getattr(obj, 'crss', None):
+                doc += "[" + ', '.join(obj.crss[:nmax])
+                if len(obj.crss) > nmax:
+                    doc += ', ...'
+                doc += "]"
+
+            if getattr(obj, 'minOccurs', None) is not None:
+                if obj.minOccurs == 0:
+                    doc += ', optional'
+                    if getattr(obj, 'default', None):
+                        doc += ', default:{0}'.format(obj.defaultValue)
+
+            if getattr(obj, 'uoms', None):
+                doc += ', units:[{}]'.format(', '.join([u.uom for u in obj.uoms]))
+
+        except Exception as e:
+            raise type(e)(e.message + ' in {0} docstring'.format(obj.identifier))
+        return doc
