@@ -1,0 +1,61 @@
+# -*- coding: utf-8 -*-
+from mongoengine import *
+
+from spaceone.core.model.mongo_model import MongoModel
+from spaceone.inventory.model.zone_model import Zone
+from spaceone.inventory.model.region_model import Region
+from spaceone.inventory.model.collection_info_model import CollectionInfo
+
+
+class Network(MongoModel):
+    network_id = StringField(max_length=40, generate_id='network', unique=True)
+    name = StringField(max_length=255)
+    cidr = StringField(max_length=40)
+    data = DictField()
+    metadata = DictField()
+    tags = DictField()
+    zone = ReferenceField('Zone')
+    region = ReferenceField('Region')
+    domain_id = StringField(max_length=255)
+    collection_info = EmbeddedDocumentField(CollectionInfo, default=CollectionInfo)
+    created_at = DateTimeField(auto_now_add=True)
+
+    meta = {
+        'updatable_fields': [
+            'name',
+            'data',
+            'metadata',
+            'tags',
+            'collection_info'
+        ],
+        'exact_fields': [
+            'network_id',
+            'cidr',
+            'collection_info.state'
+        ],
+        'minimal_fields': [
+            'network_id',
+            'name',
+            'cidr',
+            'collection_info.state'
+        ],
+        'change_query_keys': {
+            'zone_id': 'zone.zone_id',
+            'region_id': 'region.region_id'
+        },
+        'reference_query_keys': {
+            'zone': Zone,
+            'region': Region
+        },
+        'ordering': [
+            'name'
+        ],
+        'indexes': [
+            'network_id',
+            'cidr',
+            'zone',
+            'region',
+            'domain_id',
+            'collection_info.state'
+        ]
+    }
