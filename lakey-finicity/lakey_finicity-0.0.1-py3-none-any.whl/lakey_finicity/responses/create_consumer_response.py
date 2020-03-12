@@ -1,0 +1,20 @@
+from dataclasses import dataclass
+
+
+@dataclass
+class CreateConsumerResponse(object):
+    id: str
+    createdDate: int
+    _unused_fields: dict  # this is for forward compatibility and should be empty
+
+    @staticmethod
+    def from_dict(data: dict):
+        data = dict(data)  # don't mutate the original
+        id = data.pop('id')
+        createdDate = data.pop('createdDate')
+        return CreateConsumerResponse(
+            id=id,
+            createdDate=createdDate,
+            _unused_fields=data,
+        )
+
