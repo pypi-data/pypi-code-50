@@ -1,0 +1,2 @@
+class SchemaInvalidationError(ValueError):
+    pass
