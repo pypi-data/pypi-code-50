@@ -1,0 +1,6 @@
+__title__ = 'fbctl'
+__description__ = 'Command line tool for Flashbase'
+__url__ = 'https://lightningdb.io/'
+__version__ = '0.2.18b5'
+__author__ = 'LightningDB'
+__email__ = 'lightningdb@sktelecom.com'
