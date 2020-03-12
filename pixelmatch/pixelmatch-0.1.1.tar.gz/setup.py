@@ -1,0 +1,21 @@
+# -*- coding: utf-8 -*-
+from setuptools import setup
+
+modules = \
+['pixelmatch']
+setup_kwargs = {
+    'name': 'pixelmatch',
+    'version': '0.1.1',
+    'description': 'A pixel-level image comparison library. Python port of https://github.com/mapbox/pixelmatch',
+    'long_description': '# pixelmatch-py\n\nPython port of https://github.com/mapbox/pixelmatch.\n\nA fast pixel-level image comparison library, originally created to compare screenshots in tests.\n\nFeatures accurate **anti-aliased pixels detection**\nand **perceptual color difference metrics**.\n\n```python\nfrom pixelmatch import pixelmatch\n\nnum_diff_pixels = pixelmatch(img1, img2, 800, 600, diff, {\n  \'threshold\': 0.1\n})\n```\n\nImplements ideas from the following papers:\n\n- [Measuring perceived color difference using YIQ NTSC transmission color space in mobile applications](http://www.progmat.uaem.mx:8080/artVol2Num2/Articulo3Vol2Num2.pdf) (2010, Yuriy Kotsarenko, Fernando Ramos)\n- [Anti-aliased pixel and intensity slope detector](https://www.researchgate.net/publication/234126755_Anti-aliased_Pixel_and_Intensity_Slope_Detector) (2009, Vytautas Vyšniauskas)\n\n## Install\n\n```bash\npip install pixelmatch\n```\n\n## API\n\n### pixelmatch(img1, img2, width, height[output, options])\n\n- `img1`, `img2` — RGBA Image data of the images to compare. **Note:** image dimensions must be equal.\n- `width`, `height` — Width and height of the images.\n- `output` — Image data to write the diff to, or `None` if don\'t need a diff image. Note that _all three images_ need to have the same dimensions.\n  `options` is a dict with the following properties:\n\n- `threshold` — Matching threshold, ranges from `0` to `1`. Smaller values make the comparison more sensitive. `0.1` by default.\n- `includeAA` — If `true`, disables detecting and ignoring anti-aliased pixels. `false` by default.\n- `alpha` — Blending factor of unchanged pixels in the diff output. Ranges from `0` for pure white to `1` for original brightness. `0.1` by default.\n- `aa_color` — The color of anti-aliased pixels in the diff output in `[R, G, B]` format. `[255, 255, 0]` by default.\n- `diff_color` — The color of differing pixels in the diff output in `[R, G, B]` format. `[255, 0, 0]` by default.\n- `diff_mask` — Draw the diff over a transparent background (a mask), rather than over the original image. Will not draw anti-aliased pixels (if detected).\n\nCompares two images, writes the output diff and returns the number of mismatched pixels.\n\n## Example usage\n\n### PIL\n\n```python\nfrom PIL import Image\n\nfrom pixelmatch import pixelmatch\n\n\ndef pil_to_flatten_data(img):\n    """\n    Convert data from [(R1, G1, B1, A1), (R2, G2, B2, A2)] to [R1, G1, B1, A1, R2, G2, B2, A2]\n    """\n    return [x for p in img.convert("RGBA").getdata() for x in p]\n\nimg_a = Image.open("a.png")\nimg_b = Image.open("b.png")\nwidth, height = img_a.size\n\ndata_a = pil_to_flatten_data(img_a)\ndata_b = pil_to_flatten_data(img_b)\ndata_diff = [0] * len(data_a)\n\nmismatch = pixelmatch(data_a, data_b, width, height, data_diff, {\n    "includeAA": True\n})\n\nimg_diff = Image.new("RGBA", img_a.size)\n\ndef flatten_data_to_pil(data):\n    return list(zip(data[::4], data[1::4], data[2::4], data[3::4]))\n\nimg_diff.putdata(flatten_data_to_pil(data_diff))\nimg_diff.save("diff.png")\n```\n\n## Example output\n\n| expected             | actual               | diff                         |\n| -------------------- | -------------------- | ---------------------------- |\n| ![](fixtures/4a.png) | ![](fixtures/4b.png) | ![1diff](fixtures/4diff.png) |\n| ![](fixtures/3a.png) | ![](fixtures/3b.png) | ![1diff](fixtures/3diff.png) |\n| ![](fixtures/6a.png) | ![](fixtures/6b.png) | ![1diff](fixtures/6diff.png) |\n| ![](fixtures/7a.png) | ![](fixtures/7b.png) | ![1diff](fixtures/7diff.png) |\n\n## Changelog\n\n### v0.1.1\n\n- fix: fix bug in fast path [#18](https://github.com/whtsky/pixelmatch-py/pull/18)\n\n### v0.1.0\n\n- Initial release\n',
+    'author': 'Wu Haotian',
+    'author_email': 'whtsky@gmail.com',
+    'maintainer': None,
+    'maintainer_email': None,
+    'url': 'https://github.com/whtsky/pixelmatch-py',
+    'py_modules': modules,
+    'python_requires': '>=3.6,<4.0',
+}
+
+
+setup(**setup_kwargs)
