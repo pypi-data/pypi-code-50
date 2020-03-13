@@ -1,0 +1,36 @@
+from .cli import ArgsExpander, Argument, Configurator, auto_cli, catalogue
+from .core import (
+    BaseOverlay,
+    Overlay,
+    PatternCollection,
+    PteraFunction,
+    interact,
+    to_pattern,
+)
+from .recur import Recurrence
+from .selfless import ConflictError, Override, default, override, transform
+from .storage import Storage, initializer, updater, valuer
+from .tags import Tag, tag
+
+
+class PteraDecorator:
+    def __init__(self, kwargs):
+        self.kwargs = kwargs
+
+    def defaults(self, **defaults):
+        return PteraDecorator({**self.kwargs, "defaults": defaults})
+
+    def __call__(self, fn):
+        new_fn, state = transform(fn, interact=interact)
+        fn = PteraFunction(new_fn, state)
+        if "defaults" in self.kwargs:
+            fn = fn.new(
+                **{
+                    k: override(v, -0.5)
+                    for k, v in self.kwargs["defaults"].items()
+                }
+            )
+        return fn
+
+
+ptera = PteraDecorator({})
