@@ -1,0 +1,1 @@
+from .check_glue_catalog import get_tables
