@@ -1,0 +1,51 @@
+# -*- coding=utf-8 -*-
+import os
+from datetime import date
+from flask import render_template, flash, redirect, url_for, request,\
+    current_app, Blueprint, send_from_directory, session
+from flask_login import  current_user, login_required
+from flask_ckeditor import upload_success, upload_fail
+from xp_mall.utils import redirect_back, allowed_file, rename_image, resize_image
+from xp_mall.extensions import db
+
+
+from xp_mall.admin.admin_module import *
+from xp_mall.admin.goods import *
+from xp_mall.admin.category import *
+from xp_mall.admin.member import *
+from xp_mall.forms.settings import SettingForm
+
+@admin_module.before_request
+@login_required
+def is_admin():
+    print(session['user'])
+    if session['user'] != "admin":
+        return redirect(url_for("login"))
+
+
+@admin_module.route('/', methods=['GET'])
+@login_required
+def index():
+    return  render_template("admin/admin_index.html")
+
+@admin_module.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    form = SettingForm()
+    if form.validate_on_submit():
+        current_user.name = form.name.data
+        current_user.blog_title = form.blog_title.data
+        current_user.blog_sub_title = form.blog_sub_title.data
+        current_user.about = form.about.data
+        db.session.commit()
+        flash('Setting updated.', 'success')
+        return redirect(url_for('blog.index'))
+    form.name.data = current_user.name
+    form.blog_title.data = current_user.blog_title
+    form.blog_sub_title.data = current_user.blog_sub_title
+    form.about.data = current_user.about
+    return render_template('admin/settings.html', form=form)
+
+
+
+    # ret
